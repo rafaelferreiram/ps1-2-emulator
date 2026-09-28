@@ -1,0 +1,51 @@
+PS1/2 — versão 4.2
+
+Interface inspirada no menu do PlayStation 2. Fundo vetorial próprio.
+Os GIFs de abertura dos consoles são incluídos localmente, sem áudio.
+Os mesmos GIFs são reutilizados em loop na prévia ao passar o mouse,
+sem abrir o emulador; com redução de movimento, a prévia é estática.
+Não há arquivos de BIOS no inicializador.
+Referência de navegação: manual oficial Sony, páginas 31–32:
+https://www.playstation.com/content/dam/global_pdc/en/corporate/support/manuals/ps2-docs/scph-90004/SCPH-90002CB_90003CB_PS2_UG_EN.pdf
+
+Logo: imagem fornecida por Rafael em 28/09/2026, utilizada como enviada.
+Símbolo PlayStation nas cores vermelho, amarelo, verde e azul sobre fundo escuro.
+
+Controle do PlayStation 1: PSX Original Controller, por Evan-Amos.
+https://commons.wikimedia.org/wiki/File:PSX-Original-Controller.png
+https://upload.wikimedia.org/wikipedia/commons/f/ff/PSX-Original-Controller.png
+
+Controle do PlayStation 2: PlayStation2 DualShock2, por Evan-Amos.
+https://commons.wikimedia.org/wiki/File:PlayStation2-DualShock2.png
+https://upload.wikimedia.org/wikipedia/commons/a/a8/PlayStation2-DualShock2.png
+
+As duas fotografias foram dedicadas ao domínio público pelo autor.
+As cópias no app foram apenas redimensionadas para exibição.
+
+GIF PS1 (Sony + PlayStation), publicado no Tenor:
+https://tenor.com/view/playstation-start-up-sony-play-station1loading-screen-gif-17483393
+https://media1.tenor.com/m/RvG_sbQ7jUAAAAAd/playstation-start-up.gif
+640 × 478, 221 quadros, 10,05 segundos.
+
+GIF PS2 (torres + PlayStation 2), publicado no Tenor:
+https://tenor.com/view/ps2startup-bios-startup-playstation2-sony-computer-entertainment-gif-16252950
+https://media1.tenor.com/m/4V0BNZ-cYikAAAAd/ps2startup-bios.gif
+640 × 360, 283 quadros, 10,10 segundos.
+Obtidos em 28/09/2026. Créditos de publicação não transferem direitos.
+Logos e sequências de inicialização pertencem aos respectivos titulares.
+
+PlayStation é marca da Sony Interactive Entertainment.
+Este launcher pessoal não é um produto oficial da Sony.
+
+Capas frontais PS2 incluídas para uniformizar a apresentação da central:
+Coleção xlenore/ps2-covers, pasta covers/default (sem caixa 3D).
+https://github.com/xlenore/ps2-covers
+FIFA Street 2 — SLUS-21369, NTSC-U/C:
+https://raw.githubusercontent.com/xlenore/ps2-covers/main/covers/default/SLUS-21369.jpg
+Need for Speed Underground 2 — SLUS-21065, NTSC-U/C, capa do jogo-base:
+https://raw.githubusercontent.com/xlenore/ps2-covers/main/covers/default/SLUS-21065.jpg
+Surf's Up — SLUS-21572, NTSC-U/C:
+https://raw.githubusercontent.com/xlenore/ps2-covers/main/covers/default/SLUS-21572.jpg
+512 × 736 pixels cada, obtidas em 29/09/2026. Sem alterações nas imagens.
+Artes pertencem aos respectivos titulares. Demais capas reutilizadas das pastas
+locais dos emuladores; jogos, BIOS e saves não estão incluídos.
