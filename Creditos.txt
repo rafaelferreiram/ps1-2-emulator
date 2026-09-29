@@ -1,6 +1,9 @@
-PS1/2 — versão 4.7
+PS1/2 — versão 4.8.1
 
 Interface inspirada no menu do PlayStation 2. Fundo vetorial próprio.
+Marcador P1: desenho vetorial próprio, com tipografia arcade e ponta de cursor.
+Referência conceitual de P1 / Player 1, sem copiar imagens ou fontes:
+https://en-americas-support.nintendo.com/app/answers/detail/a_id/41237/p/1095
 Os GIFs de abertura dos consoles são incluídos localmente, sem áudio.
 Os mesmos GIFs são reutilizados em loop na prévia do console pré-selecionado
 por mouse, teclado ou controle, sem abrir o emulador; com redução de movimento,

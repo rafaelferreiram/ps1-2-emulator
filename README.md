@@ -4,11 +4,12 @@ Central pessoal de jogos para macOS, feita em **SwiftUI + AppKit**, com visual i
 
 **Este projeto é um inicializador, não um emulador.** Ele abre o [DuckStation](https://www.duckstation.org/) para PS1 e o [PCSX2](https://pcsx2.net/) para PS2. Cada emulador precisa ser instalado e configurado separadamente. Jogos, BIOS e saves não estão incluídos.
 
-O repositório chama-se `ps1-2-emulator`; o aplicativo se chama **PS1/2**. O bundle usa `PS1-2.app`, pois `/` é separador de pastas no macOS. Versão atual: **4.7, build 15**.
+O repositório chama-se `ps1-2-emulator`; o aplicativo se chama **PS1/2**. O bundle usa `PS1-2.app`, pois `/` é separador de pastas no macOS. Versão atual: **4.8.1, build 17**.
 
 ## Funcionalidades
 
 - Menu PS1/PS2, controles correspondentes e logo PlayStation.
+- Marcador **P1** (Player 1) no console pré-selecionado, com visual arcade em azul-claro. Acompanha mouse, teclado e analógico; é apenas um cursor visual, não muda a porta do controle nos emuladores. Desenho vetorial local, sem novas imagens, fontes ou downloads.
 - Prévia animada do console pré-selecionado: GIF em loop, sem som e **sem iniciar o emulador**. Acompanha mouse, teclado e controle; continua ao retirar o mouse do cartão. A prévia pausa quando a central sai de foco e respeita a opção Reduzir movimento do macOS.
 - Abertura com GIF do console antes de iniciar/focar o emulador.
 - Catálogo por console, capas frontais, navegação por mouse, teclado e controle compatível.
@@ -132,7 +133,7 @@ Se o macOS pedir acesso ao volume externo, escolha **Permitir** para realizar um
 
 | Ação | Teclado | Controle compatível |
 |---|---|---|
-| Selecionar console/jogo | Setas | Direcional |
+| Selecionar console/jogo | Setas | Direcional ou analógico esquerdo |
 | Confirmar/abrir | Enter | X |
 | Voltar/cancelar abertura | Esc | Círculo |
 | Tela cheia/janela | F | Quadrado |
@@ -140,6 +141,8 @@ Se o macOS pedir acesso ao volume externo, escolha **Permitir** para realizar um
 | Encerrar a central | ⌘Q | — |
 
 No mouse, passar sobre PS1/PS2 pré-seleciona o console; clicar inicia a abertura. A prévia do console pré-selecionado continua mesmo sem hover e também acompanha as setas do teclado ou controle. É silenciosa, usa os GIFs locais e não faz downloads. O mapeamento do controle dentro dos jogos continua sendo responsabilidade de cada emulador.
+
+O analógico esquerdo seleciona em quatro direções. No menu, cada inclinação troca o console uma vez: solte ao centro antes de repetir na mesma direção. No catálogo, esquerda/direita move um jogo e cima/baixo move uma linha; segurar repete após 450 ms, com intervalo de 140 ms. A zona neutra e a estabilização de diagonais evitam movimentos por pequenas oscilações. Após trocar de tela, usar um botão ou voltar de outro aplicativo, solte o analógico ao centro para rearmar. O analógico direito não navega. A central não captura movimentos em segundo plano nem altera os controles dos emuladores.
 
 ## Sessões e limites
 
@@ -175,6 +178,7 @@ bash tests/run-catalog-tests.sh
 bash tests/run-hover-animation-tests.sh
 bash tests/run-now-playing-tests.sh
 bash tests/run-launcher-preview-tests.sh
+bash tests/run-controller-input-tests.sh
 bash tests/run-launch-check-tests.sh
 bash tests/run-cache-tests.sh
 bash tests/run-cover-cache-tests.sh

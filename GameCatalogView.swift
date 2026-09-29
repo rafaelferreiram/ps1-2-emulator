@@ -164,6 +164,7 @@ struct GameCatalogView: View {
                 Button { model.showCatalog() } label: { hint("△", "Atualizar \(console.badge)", "T", Color(red: 0.4, green: 0.9, blue: 0.68)) }.disabled(loading)
                 Spacer()
                 Label("Selecionar", systemImage: "arrow.up.and.down.and.arrow.left.and.right").font(.system(size: 11)).foregroundStyle(Theme.pale.opacity(0.5))
+                    .help("Setas, direcional ou analógico esquerdo; segure o analógico para percorrer os jogos")
             }.buttonStyle(.plain).padding(.top, 15).padding(.bottom, 24)
         }.padding(.horizontal, 63).frame(width: 1100, height: 700)
          .background(Theme.background.opacity(0.92))

@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 
 @main
 @MainActor
@@ -14,6 +15,20 @@ struct LauncherPreviewTests {
         // Initialize AppKit without running the app delegate, showing a window,
         // or invoking any emulator-launching action.
         _ = NSApplication.shared
+        for selected in [false, true] {
+            let renderer = ImageRenderer(content: PlayerOneIndicator(selected: selected))
+            renderer.scale = 2
+            guard let image = renderer.cgImage else { fatalError("Could not render P1 indicator") }
+            require(image.width == 64 && image.height == 48, "P1 always reserves the same compact slot")
+            let bitmap = NSBitmapImageRep(cgImage: image)
+            var opaquePixels = 0
+            for x in 0..<bitmap.pixelsWide {
+                for y in 0..<bitmap.pixelsHigh {
+                    if (bitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.1 { opaquePixels += 1 }
+                }
+            }
+            require(selected ? opaquePixels > 100 : opaquePixels == 0, "P1 is visible only for the preselected console")
+        }
         let model = LauncherModel(startServices: false)
         require(model.selected == .ps2, "PS2 is initially preselected")
         require(model.previewConsole == nil, "boot hides the preview")

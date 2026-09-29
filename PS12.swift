@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import Combine
 
 enum Console: String, CaseIterable, Identifiable {
     case ps1, ps2
@@ -469,6 +470,40 @@ struct SystemScene: View {
     }
 }
 
+/// Original arcade-style Player 1 cursor, drawn locally without image assets.
+struct PlayerOneIndicator: View {
+    static let width: CGFloat = 32
+    let selected: Bool
+
+    private var outline: Path {
+        Path { path in
+            path.move(to: CGPoint(x: 3, y: 2))
+            path.addLine(to: CGPoint(x: 25, y: 2))
+            path.addLine(to: CGPoint(x: 31, y: 12))
+            path.addLine(to: CGPoint(x: 25, y: 22))
+            path.addLine(to: CGPoint(x: 3, y: 22))
+            path.addLine(to: CGPoint(x: 1, y: 20))
+            path.addLine(to: CGPoint(x: 1, y: 4))
+            path.closeSubpath()
+        }
+    }
+
+    var body: some View {
+        ZStack {
+            outline.fill(LinearGradient(colors: [Theme.blue.opacity(0.65), Theme.blue.opacity(0.18)],
+                                        startPoint: .leading, endPoint: .trailing))
+            outline.stroke(Theme.ice.opacity(0.9), lineWidth: 1)
+            Text("P1").font(.system(size: 14, weight: .black, design: .monospaced)).italic()
+                .tracking(-0.5).foregroundStyle(Color.white).offset(x: -2)
+        }
+        .frame(width: Self.width, height: 24)
+        .shadow(color: Theme.blue.opacity(0.5), radius: 5)
+        .opacity(selected ? 1 : 0)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
 struct ConsoleOption: View {
     let console: Console
     @ObservedObject var model: LauncherModel
@@ -485,10 +520,7 @@ struct ConsoleOption: View {
         VStack(alignment: .leading, spacing: 0) {
           Button { model.launch(console) } label: {
             HStack(spacing: 15) {
-                ZStack {
-                    Circle().fill(Theme.blue.opacity(selected ? 0.3 : 0)).frame(width: 24, height: 24).blur(radius: 6)
-                    Circle().fill(selected ? Theme.ice : Color.white.opacity(0.15)).frame(width: 5, height: 5)
-                }.frame(width: 21)
+                PlayerOneIndicator(selected: selected)
                 if let image = Theme.images[console.asset] {
                     Image(nsImage: image).resizable().interpolation(.high).scaledToFit().frame(width: 76, height: 54)
                         .shadow(color: Theme.blue.opacity(selected ? 0.45 : 0), radius: 14).accessibilityHidden(true)
@@ -508,7 +540,7 @@ struct ConsoleOption: View {
           }
           .buttonStyle(.plain).disabled(model.launching != nil || model.stopping.contains(console))
           .accessibilityLabel("Abrir \(console.name) — \(console.emulator)")
-          .accessibilityValue(selected ? "Selecionado" : "")
+          .accessibilityValue(selected ? "Selecionado · P1, jogador 1" : "")
           .help("Reproduzir a abertura de \(console.badge) e abrir \(console.emulator)")
           HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 6) {
@@ -540,7 +572,7 @@ struct ConsoleOption: View {
                 }.buttonStyle(.plain).disabled(model.stopping.contains(console) || model.launching != nil)
                  .accessibilityLabel("Desligar \(console.badge) — \(console.emulator)")
             }
-          }.padding(.leading, 49).padding(.trailing, 13).frame(height: 73, alignment: .top)
+          }.padding(.leading, 13 + PlayerOneIndicator.width + 15).padding(.trailing, 13).frame(height: 73, alignment: .top)
         }
         .background(LinearGradient(colors: [Theme.blue.opacity(selected ? 0.13 : 0), Theme.blue.opacity(selected ? 0.035 : 0), .clear], startPoint: .leading, endPoint: .trailing))
         .overlay(alignment: .bottom) {
@@ -622,6 +654,7 @@ struct SystemMenu: View {
                         Image(systemName: "arrow.up.arrow.down").font(.system(size: 12))
                         Text("Selecionar").font(.system(size: 12))
                     }.foregroundStyle(Theme.pale.opacity(0.52))
+                     .help("Setas, direcional ou analógico esquerdo para selecionar")
                 }.buttonStyle(.plain)
                 HStack(spacing: 7) {
                     Circle().fill(model.storageMounted ? Theme.ice.opacity(0.8) : Color.orange).frame(width: 4, height: 4)
@@ -731,6 +764,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let model = LauncherModel()
     private var keyMonitor: Any?
     private var controllerInput: ControllerInput?
+    private var navigationObserver: AnyCancellable?
     private var normalWindowFrame: NSRect?
     private let normalStyle: NSWindow.StyleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
     static func main() {
@@ -770,8 +804,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                                           onBack: { [weak self] in self?.handleController { $0.back() } },
                                           onFullscreen: { [weak self] in self?.handleController { $0.toggleFullscreen?() } },
                                           onCatalog: { [weak self] in self?.handleController { $0.showCatalog() } },
+                                          navigationContext: { [weak self] in self?.analogNavigationContext },
+                                          repeatsAnalog: { [weak self] in self?.model.catalogConsole != nil },
                                           onConnectionChanged: { [weak self] in self?.model.controllerName = $0 })
         controllerInput?.start()
+        // Sample neutral when a screen changes even if no stick event arrives.
+        // @Published emits before mutation, so read the settled model next turn.
+        navigationObserver = Publishers.CombineLatest4(model.$booting, model.$catalogConsole,
+                                                       model.$launching, model.$errorMessage)
+            .combineLatest(model.$storageNotice)
+            .map { state, storage -> String? in
+                let (booting, console, launching, error) = state
+                guard !booting, launching == nil, error == nil, storage == nil else { return nil }
+                return console.map { "catalog-\($0.rawValue)" } ?? "menu"
+            }
+            .removeDuplicates()
+            .sink { [weak self] _ in
+                DispatchQueue.main.async { [weak self] in self?.controllerInput?.refreshAnalogNavigation() }
+            }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             let handled = MainActor.assumeIsolated {
                 guard let self else { return false }
@@ -816,10 +866,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
               window?.isMiniaturized == false, model.errorMessage == nil, NSApp.modalWindow == nil else { return }
         action(model)
     }
+    private var analogNavigationContext: String? {
+        guard NSApp.isActive, window?.isKeyWindow == true, window?.isVisible == true,
+              window?.isMiniaturized == false, window?.attachedSheet == nil,
+              NSApp.modalWindow == nil, !model.booting, model.launching == nil,
+              model.errorMessage == nil, model.storageNotice == nil else { return nil }
+        return model.catalogConsole.map { "catalog-\($0.rawValue)" } ?? "menu"
+    }
     private func updateActivity() {
         model.isForeground = NSApp.isActive && window?.isVisible == true && window?.isMiniaturized == false
             && window?.occlusionState.contains(.visible) == true
         NSApp.presentationOptions = model.fullscreen && model.isForeground ? [.autoHideDock, .autoHideMenuBar] : []
+        controllerInput?.refreshAnalogNavigation()
     }
     func applicationDidBecomeActive(_ notification: Notification) {
         updateActivity()
@@ -845,6 +903,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     func applicationWillTerminate(_ notification: Notification) {
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+        navigationObserver = nil
         controllerInput?.stop()
     }
     @objc private func showWindow() {
@@ -882,7 +941,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func showAbout() {
         let alert = NSAlert()
         alert.messageText = "PS1/2"
-        alert.informativeText = "Versão 4.7 · Interface inspirada no PlayStation 2\n\nO console pré-selecionado mostra sua prévia animada em loop, por mouse, teclado ou controle, sem abrir o emulador. Catálogos salvos de PS1 e PS2 são restaurados ao iniciar, mesmo sem o SSD. Ao tentar jogar sem ele, um aviso de armazenamento pede a conexão. Reconectar não inicia jogos automaticamente.\n\nUse setas para selecionar, Enter para confirmar, T / △ para listar jogos ou realizar uma nova carga completa, F / □ para tela cheia e Esc / ○ para voltar.\n\nLogo: fornecido pelo usuário.\nFotos: Evan-Amos / Wikimedia — domínio público.\nGIFs: Tenor; créditos completos no pacote do app.\n\nInicializador pessoal para DuckStation e PCSX2, sem vínculo oficial com a Sony."
+        alert.informativeText = "Versão 4.8.1 · Interface inspirada no PlayStation 2\n\nO console pré-selecionado mostra sua prévia animada em loop, por mouse, teclado ou controle, sem abrir o emulador. Catálogos salvos de PS1 e PS2 são restaurados ao iniciar, mesmo sem o SSD. Ao tentar jogar sem ele, um aviso de armazenamento pede a conexão. Reconectar não inicia jogos automaticamente.\n\nUse setas, direcional ou analógico esquerdo para selecionar, Enter / X para confirmar, T / △ para listar jogos ou realizar uma nova carga completa, F / □ para tela cheia e Esc / ○ para voltar. Segure o analógico para percorrer o catálogo; solte ao centro ao trocar de tela.\n\nLogo: fornecido pelo usuário.\nFotos: Evan-Amos / Wikimedia — domínio público.\nGIFs: Tenor; créditos completos no pacote do app.\n\nInicializador pessoal para DuckStation e PCSX2, sem vínculo oficial com a Sony."
         alert.icon = Theme.images["Logo"]
         alert.addButton(withTitle: "OK")
         alert.runModal()
