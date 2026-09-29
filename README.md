@@ -2,9 +2,32 @@
 
 Central pessoal de jogos para macOS, feita em **SwiftUI + AppKit**, com visual inspirado no menu do PlayStation 2.
 
-**Este projeto é um inicializador, não um emulador.** Ele abre o [DuckStation](https://www.duckstation.org/) para PS1 e o [PCSX2](https://pcsx2.net/) para PS2. Cada emulador precisa ser instalado e configurado separadamente. Jogos, BIOS e saves não estão incluídos.
+**Este projeto é um inicializador, não um emulador.** Ele abre o [DuckStation](https://www.duckstation.org/) para PS1 e o [PCSX2](https://pcsx2.net/) para PS2. O instalador deste repositório compila a central e baixa os emuladores oficiais que estiverem faltando; a configuração inicial de cada emulador continua sendo manual. Jogos, BIOS e saves não estão incluídos.
 
 O repositório chama-se `ps1-2-emulator`; o aplicativo se chama **PS1/2**. O bundle usa `PS1-2.app`, pois `/` é separador de pastas no macOS. Versão atual: **4.8.1, build 17**.
+
+## Começar aqui: clonar, instalar e abrir
+
+Em um **Mac Apple Silicon com macOS 14 ou posterior**, abra o Terminal. Este repositório é privado: sua conta do GitHub precisa ter acesso e estar autenticada para o clone.
+
+```bash
+git clone https://github.com/rafaelferreiram/ps1-2-emulator.git
+cd ps1-2-emulator
+bash install.sh
+open /Applications/PS1-2.app
+```
+
+**Já clonou?** Entre na pasta `ps1-2-emulator` e execute apenas os dois últimos comandos. Também é possível abrir a pasta no Finder e dar duplo clique em **Instalar.command**, que executa o mesmo instalador no Terminal.
+
+Se o Git ou as ferramentas de compilação estiverem faltando, execute `xcode-select --install`, conclua o instalador da Apple e tente novamente. Se `/Applications` não permitir gravação, use a [instalação na sua pasta pessoal](#instalar-sem-permissão-de-gravação-em-applications).
+
+O script pede confirmação, instala a central e baixa **DuckStation (PS1) e PCSX2 (PS2) apenas se estiverem ausentes**. Não precisa de Homebrew, não usa `sudo`, não reinicia o Mac e não abre aplicativos automaticamente. Depois:
+
+1. Abra DuckStation e PCSX2 uma vez, forneça suas BIOS e configure o controle e as bibliotecas no assistente de cada um. Se o macOS pedir Rosetta para o PCSX2, a instalação e a aceitação ficam por sua conta.
+2. Teste um jogo diretamente em cada emulador. O instalador **não baixa BIOS nem jogos** e não configura os emuladores por você.
+3. Conecte o SSD com as [pastas esperadas pela central](#bibliotecas-e-capas). Na central, selecione o console e pressione **T / △** para abrir o catálogo; dentro dele, **T / △** faz uma carga completa.
+
+**Atenção em outra máquina:** clonar o repositório não copia seu catálogo, capas em cache, jogos, BIOS, saves ou configurações. Os caminhos dos jogos ainda são fixos para o volume `Extreme SSD`; usar outro nome/local exige ajustar o código antes de instalar. A central abre sem SSD, mas uma máquina nova só terá catálogo offline depois de uma primeira carga com a biblioteca conectada.
 
 ## Funcionalidades
 
@@ -35,7 +58,9 @@ Não usa Node.js, npm, Python, Homebrew, CocoaPods ou pacotes Swift externos. Ap
 
 O código foi compilado e testado com Swift 6.4 em Apple Silicon. A compatibilidade mínima declarada é macOS 14; nem todas as versões de macOS/SDK foram testadas.
 
-## 1. Preparar o ambiente
+## Instalação detalhada
+
+### 1. Preparar o ambiente
 
 Caso ainda não tenha as ferramentas de desenvolvimento:
 
@@ -54,7 +79,7 @@ git --version
 
 Referência: [instalação das Command Line Tools pela Apple](https://developer.apple.com/documentation/xcode/installing-the-command-line-tools).
 
-## 2. Clonar o repositório privado
+### 2. Clonar o repositório privado
 
 É necessário estar autenticado no GitHub com uma conta que tenha acesso. Exemplo por HTTPS:
 
@@ -67,42 +92,58 @@ cd ps1-2-emulator
 
 Também pode usar SSH se sua chave já estiver configurada. Não coloque tokens ou senhas no comando, no código ou no repositório. A pasta local sugerida é `~/Workspace/Personal/ps1-2-emulator`.
 
-## 3. Compilar
+### 3. Executar o instalador
 
 Na raiz do repositório:
 
 ```bash
-bash build.sh
+bash install.sh
 ```
 
-O script gera o ícone, copia os recursos, compila o executável nativo, aplica uma **assinatura local ad hoc** e valida o bundle. Ao terminar, informa um caminho semelhante a:
+O instalador verifica macOS, arquitetura e Command Line Tools, mostra o plano e pede confirmação. Em seguida compila a central com `build.sh` e instala em `/Applications`. Se faltarem os emuladores, consulta as releases oficiais do [DuckStation](https://github.com/stenzek/duckstation/releases/tag/latest) e do [PCSX2](https://github.com/PCSX2/pcsx2/releases/latest), baixa os pacotes macOS e os instala no mesmo destino. Para o PCSX2, usa a release estável, não uma prerelease/Nightly.
 
-```text
-/private/tmp/ps12-build.ABC123/PS1-2.app
+Antes de instalar um download, confere o **SHA-256 informado pela API oficial do GitHub**, a identidade do bundle e a assinatura. Se a verificação falhar ou o hash exigido não estiver disponível, interrompe essa instalação: não existe opção para ignorar essas verificações. Isso não dispensa os avisos de segurança e a primeira abertura do macOS.
+
+A verificação de assinatura confere a integridade do app; não significa notarização ou aprovação da Apple. O DuckStation pode usar assinatura ad hoc, e a central é compilada com assinatura ad hoc local. Os emuladores baixados mantêm a quarentena para a verificação normal do macOS na primeira abertura.
+
+- DuckStation e PCSX2 existentes em `/Applications`, `~/Applications` ou no destino escolhido são preservados quando têm o nome de app e bundle ID esperados. O instalador **não os atualiza nem sobrescreve**. Uma instalação com outro nome pode exigir conferência manual.
+- Se a central já existir, feche-a antes de continuar. A versão anterior é guardada em uma subpasta oculta `.ps12-backup.*` no destino; o caminho do backup aparece no Terminal. Não se trata de backup das suas partidas.
+- Para voltar à versão anterior, feche a central e mova o `PS1-2.app` do caminho de backup informado de volta para o destino de instalação. Os emuladores e os saves não precisam ser substituídos.
+- Jogos, BIOS, saves, memory cards, configurações dos emuladores e SSD não são modificados. Pode executar novamente para reinstalar a central e completar dependências ausentes.
+- Nenhum app é aberto automaticamente. Não há reboot, aceitação automática de licenças/Rosetta, instalação de Homebrew nem remoção automática de quarentena dos downloads.
+- Em caso de falha, o Terminal informa a pasta temporária de diagnóstico. Em caso de sucesso, os downloads temporários são removidos; backups da central ficam preservados no destino. Se uma cópia falhar por falta de espaço/permissão, os apps já instalados com sucesso podem permanecer: corrija a causa e execute novamente.
+
+Opções disponíveis:
+
+| Comando | O que faz |
+|---|---|
+| `bash install.sh` | Compila/instala a central e baixa os emuladores ausentes, após confirmação. |
+| `bash install.sh --check` | Diagnóstico sem compilar, baixar ou modificar arquivos. |
+| `bash install.sh --no-emulators` | Compila/instala somente a central; não baixa emuladores. |
+| `bash install.sh --destination "$HOME/Applications"` | Usa a pasta pessoal de aplicativos, que deve existir. |
+| `bash install.sh --yes` | Dispensa a confirmação do script; não aceita licenças nem avisos do macOS. |
+
+#### Instalar sem permissão de gravação em /Applications
+
+Não execute o instalador com `sudo`. Crie sua pasta pessoal de aplicativos e escolha esse destino:
+
+```bash
+mkdir -p "$HOME/Applications"
+bash install.sh --destination "$HOME/Applications"
+open "$HOME/Applications/PS1-2.app"
 ```
 
-O nome da pasta temporária muda a cada build. Use o caminho real impresso no seu Terminal. Não é necessário certificado Apple Developer para o build local; a assinatura ad hoc não equivale à notarização da Apple.
+Não mova a pasta do repositório para dentro de `PS1-2.app`. O app instalado contém o executável e os recursos necessários para abrir a central; a biblioteca e os emuladores permanecem externos.
 
-O build padrão usa uma pasta temporária local para evitar metadados do Finder/iCloud que podem interferir na assinatura. `cache/`, `MakeIcon` e `AppIcon.iconset/` são gerados localmente e ignorados pelo Git.
+### 4. Abrir e preparar os emuladores
 
-## 4. Instalar e rodar
-
-1. Feche somente a central PS1/2, se estiver aberta. Não é necessário fechar os emuladores para substituir a central, mas salve suas partidas antes de qualquer manutenção.
-2. Faça uma cópia da central antiga se quiser preservar essa versão.
-3. Abra no Finder a pasta temporária indicada pelo build e arraste **PS1-2.app** para **Aplicativos**. Confirme a substituição apenas se esse for o app que deseja atualizar.
-4. Abra **Aplicativos → PS1-2**. Se quiser, mantenha o ícone no Dock.
-
-Para abrir pelo Terminal depois da instalação:
+Para o destino padrão, abra **Aplicativos → PS1-2**, ou execute:
 
 ```bash
 open /Applications/PS1-2.app
 ```
 
-O aplicativo não é executado com `swift run`: este projeto gera um bundle macOS diretamente com `build.sh`.
-
-## 5. Preparar os emuladores
-
-Veja [o guia de download e configuração do PS1/PS2](docs/EMULADORES.md), com fontes oficiais, BIOS, pastas e primeira execução. Os emuladores devem estar em:
+Se quiser, mantenha o ícone no Dock. Veja [o guia dos emuladores](docs/EMULADORES.md) para configurar BIOS, bibliotecas, controle e primeira execução. No destino padrão, os emuladores ficam em:
 
 ```text
 /Applications/DuckStation.app
@@ -110,6 +151,18 @@ Veja [o guia de download e configuração do PS1/PS2](docs/EMULADORES.md), com f
 ```
 
 Teste primeiro um jogo diretamente no emulador. A central não configura BIOS, renderizador, memória ou mapeamento de controle automaticamente.
+
+### Compilar manualmente, sem instalar
+
+Para desenvolvimento ou inspeção do bundle, use:
+
+```bash
+bash build.sh
+```
+
+O script gera o ícone, copia os recursos, compila o executável nativo, aplica uma **assinatura local ad hoc** e valida o bundle. Ele não baixa emuladores nem instala a central em Aplicativos. Ao terminar, informa um caminho semelhante a `/private/tmp/ps12-build.ABC123/PS1-2.app`; use o caminho real impresso para abrir ou copiar o app manualmente. Não é necessário certificado Apple Developer para o build local; assinatura ad hoc não equivale à notarização da Apple.
+
+O build padrão usa uma pasta temporária local para evitar metadados do Finder/iCloud que podem interferir na assinatura. `cache/`, `MakeIcon` e `AppIcon.iconset/` são gerados localmente e ignorados pelo Git. O aplicativo não é executado com `swift run`: este projeto gera um bundle macOS diretamente com `build.sh`.
 
 ## Bibliotecas e capas
 
@@ -121,7 +174,7 @@ A configuração atual utiliza estas pastas, fora do repositório:
 └── PS2/Jogos/
 ```
 
-O nome do SSD e os caminhos estão definidos em `PS12.swift`, `GameCatalog.swift` e `EmulatorMonitor.swift`. **Ainda não existe uma tela de preferências ou arquivo `.env` para mudá-los.** Para usar outro volume/pasta, ajuste os caminhos nesses três arquivos e recompile; ajuste também os rótulos visuais de `Extreme SSD` em `PS12.swift`, `GameCatalogView.swift` e `StorageNoticeView.swift`. Alterar só o nome no README não muda o app.
+O nome do SSD e os caminhos estão definidos em `PS12.swift`, `GameCatalog.swift` e `EmulatorMonitor.swift`. **Ainda não existe uma tela de preferências ou arquivo `.env` para mudá-los.** Para usar outro volume/pasta, ajuste os caminhos nesses três arquivos **antes de executar `install.sh`**; ajuste também os rótulos visuais de `Extreme SSD` em `PS12.swift`, `GameCatalogView.swift` e `StorageNoticeView.swift`. Se já instalou, execute o instalador novamente após editar. Alterar só o nome no README, configurar uma pasta apenas no emulador ou escolher `--destination` não muda a biblioteca da central: essa opção muda somente onde os apps são instalados.
 
 As capas são lidas de `~/Library/Application Support/DuckStation/covers` e `~/Library/Application Support/PCSX2/covers`, com alternativas junto aos jogos. Três capas frontais incluídas em `assets/Covers/PS2` têm prioridade para padronizar a apresentação. Imagens deitadas ou quadradas são rejeitadas no PS2 para evitar capas completas de frente e verso; o filtro não reconhece automaticamente toda arte incorreta.
 
@@ -182,9 +235,12 @@ bash tests/run-controller-input-tests.sh
 bash tests/run-launch-check-tests.sh
 bash tests/run-cache-tests.sh
 bash tests/run-cover-cache-tests.sh
+bash tests/run-installer-tests.sh
 ```
 
 Esses testes usam fixtures locais e os GIFs incluídos; não precisam baixar jogos ou BIOS, nem iniciam emuladores. As suítes cobrem o monitor de sessões, animações, catálogo, snapshots sem varredura, consulta offline, falha de atualização sem perder a lista salva, validação do jogo escolhido, correspondência exata entre o disco aberto e a capa (incluindo CUE/CCD/M3U) e seis layouts compactos de miniatura. O teste de layout gera uma prévia temporária com dados fictícios para inspeção visual.
+
+Os testes do instalador usam cenários isolados, sem instalar emuladores reais ou substituir aplicativos em `/Applications`. O diagnóstico `bash install.sh --check` pode ser usado para conferir os pré-requisitos da sua máquina antes de instalar.
 
 Opcional, somente na máquina com os emuladores/SSD configurados: inventário de leitura das bibliotecas reais:
 
@@ -229,6 +285,10 @@ HoverAnimation.swift       Prévia decorativa em loop
 MakeIcon.swift             Geração do ícone do app
 Info.plist                 Identidade e versão do bundle
 build.sh                   Compilação e assinatura local
+install.sh                 Instalação da central e dependências oficiais ausentes
+Instalar.command           Atalho do Finder para o instalador no Terminal
+scripts/installer-lib.sh   Downloads oficiais, validação e publicação dos apps
+scripts/MoveApp.swift      Renomeação exclusiva e segura durante a instalação
 assets/                    Logo, fotos, GIFs e três capas frontais
 tests/                     Testes automatizados
 docs/EMULADORES.md         Downloads e configuração inicial

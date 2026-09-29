@@ -1,15 +1,40 @@
 # Instalar DuckStation e PCSX2 no macOS
 
-O PS1/2 deste repositório é somente a central de abertura e catálogo. Os emuladores são projetos independentes, instalados separadamente. Links e requisitos consultados em **29/09/2026**; confira as fontes oficiais ao atualizar, pois os pacotes e requisitos podem mudar.
+O PS1/2 deste repositório é somente a central de abertura e catálogo. DuckStation e PCSX2 são aplicativos independentes. O instalador baixa as dependências oficiais ausentes, mas você ainda precisa fornecer BIOS/jogos e concluir a configuração de cada emulador. Links e requisitos consultados em **29/09/2026**; confira as fontes oficiais ao atualizar, pois os pacotes e requisitos podem mudar.
+
+## Caminho recomendado: usar o instalador da central
+
+Depois de clonar o repositório, abra o Terminal na pasta `ps1-2-emulator`:
+
+```bash
+bash install.sh --check
+bash install.sh
+```
+
+O primeiro comando somente diagnostica os pré-requisitos, sem baixar, compilar ou modificar arquivos. O segundo pede confirmação, compila a central e baixa **somente os emuladores que não encontrar**. Também pode dar duplo clique em `Instalar.command` no Finder para executar a instalação no Terminal.
+
+- Destino padrão: `/Applications`. Para instalar na pasta pessoal, primeiro execute `mkdir -p "$HOME/Applications"` e depois `bash install.sh --destination "$HOME/Applications"`.
+- Fontes: release `latest` oficial de `stenzek/duckstation` e release estável mais recente de `PCSX2/pcsx2`, via API do GitHub. O instalador confere o SHA-256 fornecido pela API, bundle ID e assinatura antes de instalar; não ignora falhas de verificação.
+- Apps com nome padrão e identidade esperada em `/Applications`, `~/Applications` ou no destino escolhido são preservados. O script não atualiza emuladores existentes nem altera suas configurações.
+- Não instala Homebrew, não usa `sudo`, não reinicia o Mac, não aceita licenças/Rosetta, não baixa jogos/BIOS e não remove quarentena dos downloads. Também não abre aplicativos por você.
+
+Depois de instalar, abra **DuckStation** e **PCSX2** pelo Finder, conclua os assistentes abaixo e teste um jogo em cada um. Para instruções de clone, requisitos da central, opções e backup da versão anterior, consulte [Instalação detalhada no README](../README.md#instalação-detalhada).
+
+Se preferir instalar os emuladores manualmente, use as fontes oficiais abaixo e rode `bash install.sh --no-emulators` para instalar somente a central.
 
 ## PS1 — DuckStation
+
+### Download manual (pule se o instalador já instalou)
 
 1. Acesse o [site oficial](https://www.duckstation.org/) ou a [distribuição estável oficial no GitHub](https://github.com/stenzek/duckstation/releases/tag/latest).
 2. Baixe `duckstation-mac-release.zip` para macOS.
 3. Extraia o ZIP no Finder e mova **DuckStation.app** para **Aplicativos**, ficando em `/Applications/DuckStation.app`.
-4. Abra o emulador uma vez e conclua o assistente. Indique sua BIOS e a pasta da biblioteca PS1.
-5. Em configurações de controles, selecione/mapeie seu controle. O mapeamento dentro do DuckStation é separado dos botões da central.
-6. Abra um jogo diretamente no DuckStation para conferir a configuração; depois utilize o catálogo da central.
+
+### Primeira configuração (também necessária após o instalador)
+
+1. Abra o emulador uma vez e conclua o assistente. Indique sua BIOS e a pasta da biblioteca PS1.
+2. Em configurações de controles, selecione/mapeie seu controle. O mapeamento dentro do DuckStation é separado dos botões da central.
+3. Abra um jogo diretamente no DuckStation para conferir a configuração; depois utilize o catálogo da central.
 
 A distribuição documentada é universal, para Intel e Apple Silicon, e exige **macOS Ventura 13.3 ou posterior**. A BIOS não acompanha o emulador e deve ser extraída do próprio console. BIN/CUE, CHD, CCD e PBP não criptografado estão entre os formatos documentados. Preserve todos os arquivos associados de um mesmo disco. [Instalação macOS e requisitos no README oficial](https://github.com/stenzek/duckstation#macos).
 
@@ -17,11 +42,17 @@ O mínimo do DuckStation não muda o mínimo da central: o build deste repositó
 
 ## PS2 — PCSX2
 
+### Download manual (pule se o instalador já instalou)
+
 1. Abra a [página oficial de downloads](https://pcsx2.net/downloads/) e escolha **macOS**. Para começar, prefira **Stable**; Nightly recebe mudanças mais frequentes.
 2. Extraia o arquivo `.tar.xz` pelo Finder e mova o app para **Aplicativos**.
 3. Se o pacote vier com a versão no nome, use **PCSX2.app** para corresponder a `/Applications/PCSX2.app`, que é o caminho esperado pela central.
-4. Abra o PCSX2 e conclua o assistente: pasta da BIOS, biblioteca PS2 e controles. Se o macOS solicitar **Rosetta**, siga o instalador apresentado pelo próprio sistema.
-5. Teste um jogo diretamente no PCSX2 antes de usar a central.
+
+### Primeira configuração (também necessária após o instalador)
+
+1. Abra o PCSX2 e conclua o assistente: pasta da BIOS, biblioteca PS2 e controles.
+2. Se o macOS solicitar **Rosetta**, leia e aceite manualmente o instalador apresentado pelo próprio sistema, caso concorde. O script deste repositório não faz essa aceitação por você.
+3. Teste um jogo diretamente no PCSX2 antes de usar a central.
 
 Esses passos seguem o [guia oficial de instalação macOS](https://pcsx2.net/docs/setup/running/). A documentação lista **macOS 11 e 8 GB de RAM como mínimos**; níveis superiores indicam 16 GB. A versão documentada para Macs M-series utiliza Rosetta 2. O desempenho depende do jogo, da resolução e das configurações: atender ao mínimo não garante velocidade total em todos os títulos. [Requisitos oficiais do PCSX2](https://pcsx2.net/docs/setup/requirements/).
 
@@ -34,7 +65,7 @@ Não há jogos ou BIOS neste repositório. Utilize arquivos que você tenha auto
 - PS1: siga as instruções sobre BIOS no [projeto oficial DuckStation](https://github.com/stenzek/duckstation).
 - PS2: siga o [guia oficial de extração da BIOS](https://pcsx2.net/docs/setup/bios/) e o [guia de cópia dos discos](https://pcsx2.net/docs/setup/discs/), que inclui informações para CDs/DVDs no macOS.
 
-Não é necessário formatar o SSD para instalar a central. Mantenha BIOS, memory cards, saves e jogos fora da pasta do Git. A central não baixa nem fornece bibliotecas prontas.
+Não é necessário formatar o SSD para instalar a central. Mantenha BIOS, memory cards, saves e jogos fora da pasta do Git. Nem a central nem o instalador baixam ou fornecem bibliotecas prontas. O instalador não altera esses arquivos, mas o backup da central também não os inclui: mantenha seu próprio backup das partidas.
 
 ## Pastas e formatos do catálogo
 
@@ -45,7 +76,9 @@ A configuração atual espera:
 /Volumes/Extreme SSD/Emulacao/PS2/Jogos
 ```
 
-Conecte o SSD e permita o acesso ao volume quando o macOS solicitar. Para mudar esses caminhos, veja [Bibliotecas e capas no README](../README.md#bibliotecas-e-capas). A central lê os arquivos onde estão, sem duplicar sua biblioteca no disco interno.
+Conecte o SSD e permita o acesso ao volume quando o macOS solicitar. Para mudar esses caminhos, veja [Bibliotecas e capas no README](../README.md#bibliotecas-e-capas): os caminhos ainda estão no código Swift e precisam ser ajustados **antes de compilar/instalar**, não somente nas preferências dos emuladores. `--destination` muda o destino dos aplicativos, não a pasta dos jogos. A central lê os arquivos onde estão, sem duplicar sua biblioteca no disco interno.
+
+Em uma nova máquina, o cache começa vazio; clonar o Git não importa o catálogo de outro Mac. Com o SSD conectado, selecione PS1 ou PS2 e pressione **T / △** para abrir o catálogo. Dentro do catálogo, pressione **T / △** para atualizar a lista e as capas. Só depois da primeira carga bem-sucedida haverá uma lista local para consulta sem SSD; para jogar, o SSD precisa estar conectado.
 
 | Console | Extensões consideradas pelo catálogo da central |
 |---|---|
@@ -61,9 +94,12 @@ Essa tabela descreve o scanner da central, não uma garantia de compatibilidade 
 
 ## Problemas comuns
 
-- **“Não encontrei DuckStation/PCSX2”:** confira os nomes e caminhos em `/Applications`.
+- **`swiftc`/SDK não encontrado:** execute `xcode-select --install`, conclua a instalação e rode `bash install.sh --check` novamente.
+- **Sem permissão para instalar em `/Applications`:** use a pasta pessoal com `--destination "$HOME/Applications"`, depois de criá-la. Não use `sudo` como atalho.
+- **Falha de download, SHA-256 ou assinatura:** não contorne a verificação. Confira sua conexão, consulte a release oficial e tente novamente; uma mudança no pacote pode exigir atualizar o instalador. Em caso de limite da API do GitHub, aguarde ou faça a instalação manual pela fonte oficial.
+- **“Não encontrei DuckStation/PCSX2”:** confira nomes e caminhos em `/Applications` ou `~/Applications`. Abra cada emulador uma vez pelo Finder; a central prioriza o caminho padrão e também procura o app pelo bundle ID registrado no macOS.
 - **“Lendo jogos e capas…” por muito tempo:** confira se o macOS está aguardando uma resposta ao pedido de acesso ao SSD.
-- **Biblioteca vazia:** confira se o volume está conectado, se o nome é `Extreme SSD` e se os jogos já foram extraídos para as pastas configuradas.
+- **Biblioteca vazia ou desatualizada:** confira se o volume está conectado, se o nome é `Extreme SSD` e se os jogos já foram extraídos para as pastas configuradas. Abra o catálogo e pressione **T / △** para uma carga completa. Em uma máquina nova, não existe cache anterior para mostrar offline.
 - **Jogo não inicia diretamente no emulador:** revise BIOS, arquivos do disco e configuração no próprio emulador primeiro. A central não corrige esses problemas.
 - **Controle funciona na central, mas não no jogo:** configure-o separadamente dentro do DuckStation ou PCSX2.
 - **Aviso de segurança inesperado:** confirme a origem do arquivo. Não desative proteções do macOS nem remova avisos de arquivos de origem desconhecida como solução genérica.
