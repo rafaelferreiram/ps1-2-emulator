@@ -16,7 +16,7 @@ struct CatalogReloadButton: View {
                 } else {
                     Image(systemName: "arrow.clockwise")
                 }
-                Text(loading ? "Atualizando" : "Atualizar")
+                Text(loading ? "Reloading" : "Reload")
                 Text("△").font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Color(red: 0.4, green: 0.9, blue: 0.68).opacity(loading ? 0.35 : 0.9))
             }
@@ -29,8 +29,8 @@ struct CatalogReloadButton: View {
         }
         .buttonStyle(.plain)
         .disabled(loading)
-        .help("Recarrega jogos e capas de \(console.badge). Tecla R, △ no catálogo, ou R2 + L2.")
-        .accessibilityLabel(loading ? "Atualizando catálogo de \(console.badge)" : "Atualizar catálogo de \(console.badge)")
+        .help("Reloads games and covers for \(console.badge). R key, △ in the catalog, or R2 + L2.")
+        .accessibilityLabel(loading ? "Reloading \(console.badge) catalog" : "Reload \(console.badge) catalog")
     }
 }
 
@@ -85,8 +85,8 @@ private struct GameCard: View {
         self.action = action
     }
     private var cardHelp: String {
-        let coverName = game.coverURL?.lastPathComponent ?? "não disponível"
-        return "\(game.title)\n\(game.fileURL.lastPathComponent)\nCapa: \(coverName)"
+        let coverName = game.coverURL?.lastPathComponent ?? "unavailable"
+        return "\(game.title)\n\(game.fileURL.lastPathComponent)\nCover: \(coverName)"
     }
     var body: some View {
         Button(action: action) {
@@ -118,8 +118,8 @@ private struct GameCard: View {
             .shadow(color: Theme.blue.opacity(selected ? 0.14 : 0), radius: 6)
             .contentShape(Rectangle())
         }.buttonStyle(.plain)
-         .accessibilityLabel("Selecionar \(game.title)")
-         .accessibilityValue(selected ? "Selecionado" : "")
+         .accessibilityLabel("Select \(game.title)")
+         .accessibilityValue(selected ? "Selected" : "")
          .help(cardHelp)
          .task(id: CoverRequest(url: game.coverURL, snapshotID: snapshotID)) {
              await cover.load(game.coverURL, snapshotID: snapshotID)
@@ -148,26 +148,26 @@ struct GameCatalogView: View {
             HStack(spacing: 15) {
                 if let logo = Theme.images["Logo"] {
                     Image(nsImage: logo).resizable().scaledToFit().frame(width: 40, height: 40)
-                        .clipShape(RoundedRectangle(cornerRadius: 8)).accessibilityLabel("Logo PlayStation")
+                        .clipShape(RoundedRectangle(cornerRadius: 8)).accessibilityLabel("PlayStation logo")
                 }
                 VStack(alignment: .leading, spacing: 4) {
                     Text("PS1/2  /  \(console.badge)").font(.system(size: 10, weight: .medium)).tracking(2).foregroundStyle(Theme.ice.opacity(0.65))
-                    Text("Jogos \(console.badge)").font(.system(size: 25, weight: .regular, design: .rounded)).foregroundStyle(.white)
+                    Text("\(console.badge) games").font(.system(size: 25, weight: .regular, design: .rounded)).foregroundStyle(.white)
                 }
                 Spacer()
                 CatalogReloadButton(model: model, catalog: catalog)
                 Button { model.showLibrarySettings() } label: {
-                    Label("Pastas de jogos", systemImage: "folder.badge.gearshape")
+                    Label("Game folders", systemImage: "folder.badge.gearshape")
                         .font(.system(size: 11)).foregroundStyle(Theme.ice)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 6)
                         .background(Theme.blue.opacity(model.catalogCommand == .library ? 0.4 : 0), in: Capsule())
                         .overlay(Capsule().stroke(Theme.ice.opacity(model.catalogCommand == .library ? 0.95 : 0), lineWidth: 1.6))
                 }.buttonStyle(.plain)
-                 .help("Pasta dos jogos no Mac ou no disco. No controle, ↑ até Disco e ×.")
+                 .help("Game folder on the Mac or on a disk. On the controller, ↑ to Disk and ×.")
                 VStack(alignment: .trailing, spacing: 5) {
-                    Text("\(games.count) jogos · \(console.emulator)").font(.system(size: 13)).foregroundStyle(Theme.pale)
-                    Text(loading ? "Atualizando jogos e capas…" : model.isStorageAvailable(for: console) ? "Última carga completa · R atualiza" : "Catálogo offline · Conecte o disco para jogar")
+                    Text("\(games.count) games · \(console.emulator)").font(.system(size: 13)).foregroundStyle(Theme.pale)
+                    Text(loading ? "Reloading games and covers…" : model.isStorageAvailable(for: console) ? "Last full load · R reloads" : "Offline catalog · Connect the disk to play")
                         .font(.system(size: 10)).tracking(0.3).foregroundStyle(Theme.pale.opacity(0.65))
                 }
             }.padding(.top, 35).padding(.bottom, 22)
@@ -178,13 +178,13 @@ struct GameCatalogView: View {
             if loading && games.isEmpty {
                 VStack(spacing: 15) {
                     ProgressView()
-                    Text("Carregando catálogo de \(console.badge)…").foregroundStyle(Theme.pale)
+                    Text("Loading the \(console.badge) catalog…").foregroundStyle(Theme.pale)
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if games.isEmpty {
                 VStack(spacing: 15) {
                     Image(systemName: "externaldrive").font(.system(size: 38, weight: .ultraLight)).foregroundStyle(Theme.ice)
-                    Text("Nenhum jogo salvo neste catálogo").font(.system(size: 20, weight: .light))
-                    Text("Escolha uma pasta em Pastas de jogos, ou conecte o disco configurado e use Atualizar, R ou R2+L2.\nO catálogo mostra a última lista salva; os arquivos são verificados ao abrir o jogo.")
+                    Text("No saved games in this catalog").font(.system(size: 20, weight: .light))
+                    Text("Choose a folder in Game folders, or connect the configured disk and use Reload, R or R2+L2.\nThe catalog shows the last saved list; files are checked when you open a game.")
                         .font(.system(size: 12)).multilineTextAlignment(.center).foregroundStyle(Theme.pale.opacity(0.6))
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -197,7 +197,7 @@ struct GameCatalogView: View {
                                     if !section.collapsed {
                                         let cards = cards(in: section)
                                         if cards.isEmpty {
-                                            Text("Pasta vazia. Abra Pastas e coloque um jogo aqui.")
+                                            Text("Empty folder. Open Folders and place a game here.")
                                                 .font(.system(size: 12)).foregroundStyle(Theme.pale.opacity(0.55))
                                                 .padding(.leading, 28).padding(.bottom, 4)
                                         } else {
@@ -231,38 +231,38 @@ struct GameCatalogView: View {
             }
             HStack(spacing: 18) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(selection?.title ?? "Selecione um jogo")
+                    Text(selection?.title ?? "Select a game")
                         .font(.system(size: 14, weight: .medium)).foregroundStyle(.white).lineLimit(1)
-                    Text(selection.map { $0.fileURL.pathExtension.uppercased() + " · " + console.emulator } ?? "X / Enter abre o jogo selecionado")
+                    Text(selection.map { $0.fileURL.pathExtension.uppercased() + " · " + console.emulator } ?? "X / Enter opens the selected game")
                         .font(.system(size: 11)).foregroundStyle(Theme.pale.opacity(0.65))
                 }
                 Spacer()
                 if loading { ProgressView().controlSize(.small) }
                 Button { model.confirm() } label: {
-                    Label("Abrir no \(console.emulator)", systemImage: "play.fill").font(.system(size: 13, weight: .medium))
+                    Label("Open in \(console.emulator)", systemImage: "play.fill").font(.system(size: 13, weight: .medium))
                         .padding(.horizontal, 16).padding(.vertical, 10)
                         .background(Theme.blue.opacity(0.32), in: RoundedRectangle(cornerRadius: 7))
                         .overlay(RoundedRectangle(cornerRadius: 7).stroke(Theme.ice.opacity(0.4)))
                 }.buttonStyle(.plain).foregroundStyle(.white).disabled(selection == nil || loading)
-                 .accessibilityLabel("Abrir jogo selecionado no \(console.emulator)")
+                 .accessibilityLabel("Open the selected game in \(console.emulator)")
             }.padding(.vertical, 16)
             Rectangle().fill(Theme.ice.opacity(0.15)).frame(height: 1)
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 22) {
-                    Button { model.confirm() } label: { hint("×", model.catalogCommand == nil ? "Abrir jogo" : "Confirmar", "Enter", Theme.ice) }.disabled(model.catalogCommand == nil && (selection == nil || loading))
+                    Button { model.confirm() } label: { hint("×", model.catalogCommand == nil ? "Open game" : "Confirm", "Enter", Theme.ice) }.disabled(model.catalogCommand == nil && (selection == nil || loading))
                     Button { model.back() } label: { hint("○", "Consoles", "Esc", Color(red: 0.92, green: 0.49, blue: 0.51)) }
-                    Button { model.toggleFullscreen?() } label: { hint("□", model.fullscreen ? "Janela" : "Tela cheia", "F", Color(red: 0.83, green: 0.58, blue: 0.80)) }
-                    Button { model.reloadCatalog() } label: { hint("△", "Atualizar", "R", Color(red: 0.4, green: 0.9, blue: 0.68)) }
+                    Button { model.toggleFullscreen?() } label: { hint("□", model.fullscreen ? "Window" : "Full screen", "F", Color(red: 0.83, green: 0.58, blue: 0.80)) }
+                    Button { model.reloadCatalog() } label: { hint("△", "Reload", "R", Color(red: 0.4, green: 0.9, blue: 0.68)) }
                         .disabled(loading)
-                        .help("Recarrega jogos e capas. Também R2 + L2, ou a tecla R.")
+                        .help("Reloads games and covers. Also R2 + L2, or the R key.")
                     Spacer(minLength: 0)
                 }
                 HStack(spacing: 22) {
                     legend("L1", "A–Z", Theme.ice)
                     legend("R1", "Z–A", Theme.ice)
-                    legend("OPTIONS", "Pastas", Theme.pale)
-                    legend("↑", "Opções", Theme.ice)
-                    legend("↓", "Jogos", Theme.ice)
+                    legend("OPTIONS", "Folders", Theme.pale)
+                    legend("↑", "Options", Theme.ice)
+                    legend("↓", "Games", Theme.ice)
                     Spacer(minLength: 0)
                 }
             }.buttonStyle(.plain).padding(.top, 15).padding(.bottom, 24)
@@ -292,12 +292,12 @@ struct GameCatalogView: View {
         HStack(spacing: 8) {
             commandChip(.sortAZ, "A–Z", "L1", sorting: model.catalogSortAscending) { model.setCatalogSort(ascending: true) }
             commandChip(.sortZA, "Z–A", "R1", sorting: !model.catalogSortAscending) { model.setCatalogSort(ascending: false) }
-            commandChip(.folders, "Pastas", "OPTIONS", sorting: false) { model.toggleCatalogFolders() }
+            commandChip(.folders, "Folders", "OPTIONS", sorting: false) { model.toggleCatalogFolders() }
             if model.availableCatalogCommands.contains(.minimize) {
-                commandChip(.minimize, "Minimizar", "C", sorting: false) { model.toggleSectionOfSelection() }
+                commandChip(.minimize, "Collapse", "C", sorting: false) { model.toggleSectionOfSelection() }
             }
-            commandChip(.reload, "Atualizar", "△", sorting: false) { model.reloadCatalog() }
-            commandChip(.library, "Disco", "×", sorting: false) { model.showLibrarySettings() }
+            commandChip(.reload, "Reload", "△", sorting: false) { model.reloadCatalog() }
+            commandChip(.library, "Disk", "×", sorting: false) { model.showLibrarySettings() }
             Spacer(minLength: 0)
         }
     }
@@ -321,16 +321,16 @@ struct GameCatalogView: View {
         }
         .buttonStyle(.plain)
         .help(commandHelp(command))
-        .accessibilityLabel(focused ? "\(title), marcado" : title)
+        .accessibilityLabel(focused ? "\(title), marked" : title)
     }
     private func commandHelp(_ command: CatalogCommand) -> String {
         switch command {
-        case .sortAZ: return "Ordem de A a Z. L1, tecla A, ou ↑ e ×."
-        case .sortZA: return "Ordem de Z a A. R1, tecla Z, ou ↑ e ×."
-        case .folders: return "Pastas do catálogo. OPTIONS, tecla P, ou ↑ e ×. Os arquivos não saem do disco."
-        case .minimize: return "Minimiza ou mostra a pasta do jogo marcado. Tecla C, ou ↑ e ×."
-        case .reload: return "Atualiza jogos e capas. △, R, R2 + L2, ou ↑ e ×."
-        case .library: return "Pasta dos jogos no Mac ou no disco. ↑ e ×."
+        case .sortAZ: return "Sort A to Z. L1, the A key, or ↑ and ×."
+        case .sortZA: return "Sort Z to A. R1, the Z key, or ↑ and ×."
+        case .folders: return "Catalog folders. OPTIONS, the P key, or ↑ and ×. Files stay on the disk."
+        case .minimize: return "Collapses or shows the marked game's folder. The C key, or ↑ and ×."
+        case .reload: return "Reloads games and covers. △, R, R2 + L2, or ↑ and ×."
+        case .library: return "Game folder on the Mac or on a disk. ↑ and ×."
         }
     }
     private func legend(_ symbol: String, _ text: String, _ color: Color) -> some View {
@@ -362,8 +362,8 @@ struct GameCatalogView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(section.collapsed ? "Mostrar \(section.title)" : "Minimizar \(section.title)")
-        .help(section.collapsed ? "Mostra os jogos desta pasta" : "Esconde os jogos desta pasta")
+        .accessibilityLabel(section.collapsed ? "Show \(section.title)" : "Collapse \(section.title)")
+        .help(section.collapsed ? "Shows the games in this folder" : "Hides the games in this folder")
     }
     private func hint(_ symbol: String, _ text: String, _ key: String, _ color: Color) -> some View {
         HStack(spacing: 7) {
@@ -388,8 +388,8 @@ private struct CatalogFoldersPanel: View {
         Set((model.catalog.games[console.rawValue] ?? []).map(\.id))
     }
     private var currentFolderName: String {
-        guard let id = model.selectedGame?.id else { return "Biblioteca" }
-        return folders.first { $0.gameIDs.contains(id) }?.name ?? "Biblioteca"
+        guard let id = model.selectedGame?.id else { return "Library" }
+        return folders.first { $0.gameIDs.contains(id) }?.name ?? "Library"
     }
     private var draft: Binding<String> {
         Binding(get: { model.folderDraft }, set: { model.folderDraft = String($0.prefix(24)) })
@@ -404,22 +404,22 @@ private struct CatalogFoldersPanel: View {
                 HStack(spacing: 12) {
                     Image(systemName: "folder.fill").font(.system(size: 22)).foregroundStyle(Theme.ice)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("Pastas do catálogo").font(.system(size: 22, weight: .light, design: .rounded))
-                        Text("Só organizam esta tela. Os arquivos continuam no disco.")
+                        Text("Catalog folders").font(.system(size: 22, weight: .light, design: .rounded))
+                        Text("They only organize this screen. Files stay on the disk.")
                             .font(.system(size: 12)).foregroundStyle(Theme.pale)
                     }
                     Spacer()
-                    Button("Fechar · Esc") { model.dismissCatalogFolders() }
+                    Button("Close · Esc") { model.dismissCatalogFolders() }
                         .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Theme.ice)
                 }
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(model.selectedGame?.title ?? "Nenhum jogo marcado")
+                    Text(model.selectedGame?.title ?? "No game marked")
                         .font(.system(size: 15, weight: .medium)).foregroundStyle(.white).lineLimit(1)
-                    Text("Agora em \(currentFolderName)")
+                    Text("Now in \(currentFolderName)")
                         .font(.system(size: 11)).foregroundStyle(Theme.pale.opacity(0.75))
                 }
                 if folders.isEmpty {
-                    Text("Crie uma pasta, como Futebol, Carros ou Luta. Sem pastas, o catálogo continua uma lista só.")
+                    Text("Create a folder, such as Football, Cars or Fighting. Without folders, the catalog stays one list.")
                         .font(.system(size: 12)).foregroundStyle(Theme.pale.opacity(0.75))
                         .fixedSize(horizontal: false, vertical: true)
                 } else {
@@ -435,7 +435,7 @@ private struct CatalogFoldersPanel: View {
                     Text(message).font(.system(size: 12)).foregroundStyle(Theme.ice).lineLimit(2)
                 }
                 HStack(spacing: 10) {
-                    TextField("Nome da pasta", text: draft)
+                    TextField("Folder name", text: draft)
                         .textFieldStyle(.plain)
                         .font(.system(size: 13))
                         .foregroundStyle(.white)
@@ -445,7 +445,7 @@ private struct CatalogFoldersPanel: View {
                         .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.ice.opacity(0.28), lineWidth: 1))
                         .focused($nameFocused)
                         .onSubmit { model.confirmCatalogFolder() }
-                    Button(model.renamingFolderID == nil ? "Criar" : "Salvar") { model.confirmCatalogFolder() }
+                    Button(model.renamingFolderID == nil ? "Create" : "Save") { model.confirmCatalogFolder() }
                         .buttonStyle(.plain)
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.white)
@@ -454,7 +454,7 @@ private struct CatalogFoldersPanel: View {
                         .background(Theme.blue.opacity(CatalogNames.cleaned(model.folderDraft) == nil ? 0.16 : 0.4), in: RoundedRectangle(cornerRadius: 6))
                         .disabled(CatalogNames.cleaned(model.folderDraft) == nil)
                     if model.renamingFolderID != nil {
-                        Button("Cancelar") {
+                        Button("Cancel") {
                             model.renamingFolderID = nil
                             model.folderDraft = ""
                         }
@@ -477,7 +477,7 @@ private struct CatalogFoldersPanel: View {
                     }
                 }
                 HStack {
-                    Text("↑↓ pasta    ←→ ação    × confirma    ○ fecha")
+                    Text("↑↓ folder    ←→ action    × confirms    ○ closes")
                         .font(.system(size: 10)).foregroundStyle(Theme.ice.opacity(0.7))
                     Spacer()
                 }
@@ -488,7 +488,7 @@ private struct CatalogFoldersPanel: View {
             .overlay(RoundedRectangle(cornerRadius: 15).stroke(Theme.ice.opacity(0.28), lineWidth: 1))
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Pastas do catálogo")
+        .accessibilityLabel("Catalog folders")
         .onAppear { nameFocused = true }
         .onChange(of: model.renamingFolderID) { _, id in
             if id != nil { nameFocused = true }
@@ -497,11 +497,11 @@ private struct CatalogFoldersPanel: View {
 
     private func folderActionTitle(_ action: CatalogFolderAction) -> String {
         switch action {
-        case .place: return "Colocar"
-        case .rename: return "Renomear"
-        case .delete: return "Apagar"
-        case .remove: return "Tirar"
-        case .create: return model.renamingFolderID == nil ? "Criar" : "Salvar"
+        case .place: return "Place"
+        case .rename: return "Rename"
+        case .delete: return "Delete"
+        case .remove: return "Remove"
+        case .create: return model.renamingFolderID == nil ? "Create" : "Save"
         }
     }
 
@@ -515,20 +515,20 @@ private struct CatalogFoldersPanel: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(folder.name).font(.system(size: 14, weight: marked ? .semibold : .regular))
                         .foregroundStyle(.white).lineLimit(1)
-                    Text(holdsGame ? "Jogo marcado nesta pasta" : (count == 1 ? "1 jogo" : "\(count) jogos"))
+                    Text(holdsGame ? "Marked game is in this folder" : (count == 1 ? "1 game" : "\(count) games"))
                         .font(.system(size: 11)).foregroundStyle(Theme.pale.opacity(0.7))
                 }
             }
             .buttonStyle(.plain)
             Spacer(minLength: 8)
-            Button(holdsGame ? "Nesta pasta" : "Colocar") {
+            Button(holdsGame ? "In this folder" : "Place") {
                 model.catalogFolderIndex = index
                 if !holdsGame { model.placeSelectedGame(in: folder.id) }
             }
             .disabled(holdsGame || model.selectedGame == nil)
-            Button("Renomear") { model.beginRenameCatalogFolder(folder.id) }
-            Button("Apagar") { model.deleteCatalogFolder(folder.id) }
-                .help("A pasta some do catálogo. Os jogos voltam para Biblioteca e nenhum arquivo é apagado.")
+            Button("Rename") { model.beginRenameCatalogFolder(folder.id) }
+            Button("Delete") { model.deleteCatalogFolder(folder.id) }
+                .help("The folder leaves the catalog. Games return to Library and no file is deleted.")
         }
         .buttonStyle(.plain)
         .font(.system(size: 11))

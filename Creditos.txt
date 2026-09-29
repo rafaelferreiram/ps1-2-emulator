@@ -1,55 +1,55 @@
-PS1/2 — versão 4.12
+PS1/2 — version 4.12
 
-Interface inspirada no menu do PlayStation 2. Fundo vetorial próprio.
-Marcador P1: desenho vetorial próprio, com tipografia arcade e ponta de cursor.
-Referência conceitual de P1 / Player 1, sem copiar imagens ou fontes:
+Interface inspired by the PlayStation 2 menu. Original vector background.
+P1 marker: original vector drawing, with arcade type and a cursor tip.
+Conceptual reference for P1 / Player 1, without copying images or fonts:
 https://en-americas-support.nintendo.com/app/answers/detail/a_id/41237/p/1095
-Os GIFs de abertura dos consoles são incluídos localmente, sem áudio.
-Os mesmos GIFs são reutilizados em loop na prévia do console pré-selecionado
-por mouse, teclado ou controle, sem abrir o emulador; com redução de movimento,
-a prévia é estática. Tirar o mouse do cartão mantém a prévia selecionada.
-Não há arquivos de BIOS no inicializador.
-Referência de navegação: manual oficial Sony, páginas 31–32:
+The console startup GIFs are included locally, with no audio.
+The same GIFs loop in the preview of the preselected console
+for mouse, keyboard or controller, without opening the emulator; with Reduce Motion,
+the preview is static. Moving the pointer off the card keeps the selected preview.
+The launcher contains no BIOS files.
+Navigation reference: official Sony manual, pages 31–32:
 https://www.playstation.com/content/dam/global_pdc/en/corporate/support/manuals/ps2-docs/scph-90004/SCPH-90002CB_90003CB_PS2_UG_EN.pdf
 
-Logo: imagem fornecida por Rafael em 28/09/2026, utilizada como enviada.
-Símbolo PlayStation nas cores vermelho, amarelo, verde e azul sobre fundo escuro.
+Logo: image supplied by Rafael on 28/09/2026, used as provided.
+PlayStation symbol in red, yellow, green and blue on a dark background.
 
-Controle do PlayStation 1: PSX Original Controller, por Evan-Amos.
+PlayStation 1 controller: PSX Original Controller, by Evan-Amos.
 https://commons.wikimedia.org/wiki/File:PSX-Original-Controller.png
 https://upload.wikimedia.org/wikipedia/commons/f/ff/PSX-Original-Controller.png
 
-Controle do PlayStation 2: PlayStation2 DualShock2, por Evan-Amos.
+PlayStation 2 controller: PlayStation2 DualShock2, by Evan-Amos.
 https://commons.wikimedia.org/wiki/File:PlayStation2-DualShock2.png
 https://upload.wikimedia.org/wikipedia/commons/a/a8/PlayStation2-DualShock2.png
 
-As duas fotografias foram dedicadas ao domínio público pelo autor.
-As cópias no app foram apenas redimensionadas para exibição.
+Both photographs were dedicated to the public domain by the author.
+The copies in the app were only resized for display.
 
-GIF PS1 (Sony + PlayStation), publicado no Tenor:
+PS1 GIF (Sony + PlayStation), published on Tenor:
 https://tenor.com/view/playstation-start-up-sony-play-station1loading-screen-gif-17483393
 https://media1.tenor.com/m/RvG_sbQ7jUAAAAAd/playstation-start-up.gif
-640 × 478, 221 quadros, 10,05 segundos.
+640 × 478, 221 frames, 10.05 seconds.
 
-GIF PS2 (torres + PlayStation 2), publicado no Tenor:
+PS2 GIF (towers + PlayStation 2), published on Tenor:
 https://tenor.com/view/ps2startup-bios-startup-playstation2-sony-computer-entertainment-gif-16252950
 https://media1.tenor.com/m/4V0BNZ-cYikAAAAd/ps2startup-bios.gif
-640 × 360, 283 quadros, 10,10 segundos.
-Obtidos em 28/09/2026. Créditos de publicação não transferem direitos.
-Logos e sequências de inicialização pertencem aos respectivos titulares.
+640 × 360, 283 frames, 10.10 seconds.
+Retrieved on 28/09/2026. Publication credits do not transfer rights.
+Logos and startup sequences belong to their respective owners.
 
-PlayStation é marca da Sony Interactive Entertainment.
-Este launcher pessoal não é um produto oficial da Sony.
+PlayStation is a trademark of Sony Interactive Entertainment.
+This personal launcher is not an official Sony product.
 
-Capas frontais PS2 incluídas para uniformizar a apresentação da central:
-Coleção xlenore/ps2-covers, pasta covers/default (sem caixa 3D).
+PS2 front covers included to keep the launcher's presentation consistent:
+xlenore/ps2-covers collection, covers/default folder (no 3D case).
 https://github.com/xlenore/ps2-covers
 FIFA Street 2 — SLUS-21369, NTSC-U/C:
 https://raw.githubusercontent.com/xlenore/ps2-covers/main/covers/default/SLUS-21369.jpg
-Need for Speed Underground 2 — SLUS-21065, NTSC-U/C, capa do jogo-base:
+Need for Speed Underground 2 — SLUS-21065, NTSC-U/C, base-game cover:
 https://raw.githubusercontent.com/xlenore/ps2-covers/main/covers/default/SLUS-21065.jpg
 Surf's Up — SLUS-21572, NTSC-U/C:
 https://raw.githubusercontent.com/xlenore/ps2-covers/main/covers/default/SLUS-21572.jpg
-512 × 736 pixels cada, obtidas em 29/09/2026. Sem alterações nas imagens.
-Artes pertencem aos respectivos titulares. Demais capas reutilizadas das pastas
-locais dos emuladores; jogos, BIOS e saves não estão incluídos.
+512 × 736 pixels each, retrieved on 29/09/2026. The images were not altered.
+Artwork belongs to its respective owners. Other covers are reused from the
+local emulator folders; games, BIOS and saves are not included.

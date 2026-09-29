@@ -51,7 +51,7 @@ struct GameCatalogTests {
         require(result.games.contains { $0.title == "Space Jam" && $0.fileURL.pathExtension == "cue" && $0.coverURL?.lastPathComponent == "SLUS-00243.png" }, "multitrack CUE + raw BIN serial + cover")
         require(result.games.contains { $0.title == "Standalone" && $0.coverURL?.resolvingSymlinksInPath().path == covers.appendingPathComponent("SCUS-94456.png").resolvingSymlinksInPath().path }, "emulator cover wins over matching nearby image")
         require(result.games.contains { $0.title == "Game" && $0.fileURL.pathExtension == "m3u" && $0.coverURL?.resolvingSymlinksInPath().path == games.appendingPathComponent("Multi/Game.png").resolvingSymlinksInPath().path }, "playlist hides component discs and keeps nearby fallback cover")
-        require(result.warning?.contains("3 CUE/CCD/lista(s)") == true, "broken/malicious/cyclic descriptors counted")
+        require(result.warning?.contains("3 incomplete CUE/CCD/playlist") == true, "broken/malicious/cyclic descriptors counted")
         let missing = CatalogScanner.scan(CatalogSource(consoleKey: "ps2", root: temporary.appendingPathComponent("missing"), covers: covers, database: nil))
         require(missing.games.isEmpty && missing.warning != nil, "missing SSD is explicit")
         try verifyPS2CoverSelection(temporary: temporary)

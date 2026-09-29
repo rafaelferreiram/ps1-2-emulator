@@ -88,18 +88,18 @@ struct EmulatorMonitorTests {
                                 available: available, now: launch.addingTimeInterval(second))
         }
         let initial = observe(0, paths: [game])
-        check(initial.gameTitle == nil && initial.activityDescription == "Verificando jogo…", "First poll is provisional")
+        check(initial.gameTitle == nil && initial.activityDescription == "Checking game…", "First poll is provisional")
         check(observe(0.5, paths: [game]).gameTitle == nil, "Rapid second poll cannot prove stability")
         let loaded = observe(1, paths: [game])
         check(loaded.gameTitle == "Tarzan" && loaded.gamePath == game, "Stable game becomes loaded")
         check(loaded.pid == 42 && loaded.launchedAt == launch, "Uptime stays bound to process start")
         let closed = observe(2)
-        check(closed.gameTitle == nil && closed.gamePath == nil && closed.activityDescription.contains("sem jogo detectado"),
+        check(closed.gameTitle == nil && closed.gamePath == nil && closed.activityDescription.contains("no game detected"),
               "Disc close immediately removes old title and path")
         check(observe(3, paths: [game]).gameTitle == nil, "Reopened disc must stabilize again")
         check(observe(4, paths: [game]).gameTitle == "Tarzan", "Reopened disc settles")
         let multiple = observe(5, paths: [game, secondGame])
-        check(multiple.gameTitle == nil && multiple.activityDescription.contains("vários discos"), "Ambiguous scan clears title")
+        check(multiple.gameTitle == nil && multiple.activityDescription.contains("several discs"), "Ambiguous scan clears title")
         check(observe(6, paths: [game]).gameTitle == nil, "After multiple candidates, stability resets")
         check(observe(7, paths: [game]).gameTitle == "Tarzan", "Single candidate recovers after ambiguity")
         check(observe(8, paths: [game], pid: 43).gameTitle == nil, "New PID cannot inherit game state")
@@ -111,7 +111,7 @@ struct EmulatorMonitorTests {
         check(observe(13, paths: [game]).gameTitle == nil, "Reopened app starts clean")
         check(observe(14, paths: [game]).gameTitle == "Tarzan", "Reopened app stabilizes")
         let denied = observe(15, paths: [game], available: false)
-        check(denied.gameTitle == nil && denied.activityDescription == "Jogo não identificado", "Denied/incomplete probe never reports old game")
+        check(denied.gameTitle == nil && denied.activityDescription == "Game not identified", "Denied/incomplete probe never reports old game")
         check(observe(16, paths: [game]).gameTitle == nil, "Recovered access starts fresh observation")
         check(observe(17, paths: [game]).gameTitle == "Tarzan", "Recovered access stabilizes")
         check(observe(18, paths: [secondGame]).gameTitle == nil, "Direct game change does not retain first title")
@@ -126,8 +126,8 @@ struct EmulatorMonitorTests {
         check(loadedPS2.gameTitle == "FIFA Street 2", "Second console independently stabilizes")
 
         let externalMonitor = EmulatorMonitor()
-        let outsideMessage = "Jogo não identificado · fora da biblioteca"
-        let noGameMessage = "Emulador aberto · sem jogo detectado"
+        let outsideMessage = "Game not identified · outside the library"
+        let noGameMessage = "Emulator open · no game detected"
         func external(_ paths: [String], sizes: [String: Int64] = [:], second: Double = 0) -> EmulatorState {
             externalMonitor.testObserve(library: ps1, pid: 70, launchedAt: launch, paths: paths, sizes: sizes,
                                         now: launch.addingTimeInterval(second))
@@ -196,7 +196,7 @@ struct EmulatorMonitorTests {
                   "Custom library retains BIOS/artwork exclusions")
             let custom = EmulatorMonitor(libraries: ["ps1": root])
             let first = custom.testObserve(library: root, pid: 80, launchedAt: launch, paths: [customGame], now: launch)
-            check(first.gameTitle == nil && first.activityDescription == "Verificando jogo…", "Custom library waits for stability")
+            check(first.gameTitle == nil && first.activityDescription == "Checking game…", "Custom library waits for stability")
             let stable = custom.testObserve(library: root, pid: 80, launchedAt: launch, paths: [customGame], now: launch.addingTimeInterval(1))
             check(stable.gameTitle == "Tarzan" && stable.gamePath == customGame, "Custom library game stabilizes")
         }

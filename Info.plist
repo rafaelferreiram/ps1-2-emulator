@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-    <key>CFBundleDevelopmentRegion</key><string>pt_BR</string>
+    <key>CFBundleDevelopmentRegion</key><string>en</string>
     <key>CFBundleDisplayName</key><string>PS1/2</string>
     <key>CFBundleName</key><string>PS1/2</string>
     <key>CFBundleExecutable</key><string>PS12</string>
     <key>CFBundleIdentifier</key><string>local.rafael.centraldejogos</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>4.12</string>
-    <key>CFBundleVersion</key><string>24</string>
+    <key>CFBundleVersion</key><string>25</string>
     <key>CFBundleIconFile</key><string>PS12ClassicIcon-v7</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>NSHighResolutionCapable</key><true/>

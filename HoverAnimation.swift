@@ -108,7 +108,7 @@ final class HoverAnimationNSView: NSView {
         }
         setAccessibilityElement(true)
         setAccessibilityRole(.image)
-        setAccessibilityLabel("Prévia do \(consoleName)")
+        setAccessibilityLabel("Preview of \(consoleName)")
         needsDisplay = true
         resumeIfVisible()
     }

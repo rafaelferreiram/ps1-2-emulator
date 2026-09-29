@@ -29,7 +29,7 @@ struct StorageNoticeView: View {
         }
         .ignoresSafeArea()
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Aviso de armazenamento da biblioteca")
+        .accessibilityLabel("Game library storage notice")
     }
 
     private var panel: some View {
@@ -48,11 +48,11 @@ struct StorageNoticeView: View {
                 .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 7) {
-                    Text("PS1/2  ·  ARMAZENAMENTO")
+                        Text("PS1/2  ·  STORAGE")
                         .font(.system(size: 10, weight: .medium))
                         .tracking(1.8)
                         .foregroundStyle(Theme.ice.opacity(0.78))
-                    Text(notice.volumeName == "Extreme SSD" ? "Conecte o SSD para jogar" : "Conecte o disco para jogar")
+                    Text(notice.volumeName == "Extreme SSD" ? "Connect the SSD to play" : "Connect the disk to play")
                         .font(.system(size: 22, weight: .light))
                         .foregroundStyle(.white)
                         .fixedSize(horizontal: false, vertical: true)
@@ -67,7 +67,7 @@ struct StorageNoticeView: View {
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 12) {
-                Text("Para abrir este jogo no \(notice.consoleName), conecte \(notice.volumeName) ao Mac. Se a pasta mudou, confira Pastas de jogos.")
+                Text("To open this game in \(notice.consoleName), connect \(notice.volumeName) to the Mac. If the folder changed, check Game folders.")
                     .font(.system(size: 13))
                     .foregroundStyle(Theme.pale.opacity(0.88))
                     .fixedSize(horizontal: false, vertical: true)
@@ -83,7 +83,7 @@ struct StorageNoticeView: View {
                         .lineLimit(2)
                         .truncationMode(.tail)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .accessibilityLabel("Jogo: \(notice.gameTitle)")
+                        .accessibilityLabel("Game: \(notice.gameTitle)")
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
@@ -91,7 +91,7 @@ struct StorageNoticeView: View {
                 .overlay(RoundedRectangle(cornerRadius: 8)
                     .stroke(Theme.ice.opacity(0.10), lineWidth: 0.6))
 
-                Text("O catálogo e as capas salvas continuam disponíveis.")
+                Text("The saved catalog and covers remain available.")
                     .font(.system(size: 12))
                     .foregroundStyle(Theme.pale.opacity(0.66))
                     .fixedSize(horizontal: false, vertical: true)
@@ -100,7 +100,7 @@ struct StorageNoticeView: View {
             VStack(spacing: 10) {
                 Button(action: onDismiss) {
                     HStack(spacing: 10) {
-                        Text("Voltar ao catálogo")
+                        Text("Back to catalog")
                             .font(.system(size: 13, weight: .medium))
                         Spacer()
                         Text("×")
@@ -118,12 +118,12 @@ struct StorageNoticeView: View {
                     .contentShape(RoundedRectangle(cornerRadius: 8))
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Voltar ao catálogo")
-                .accessibilityHint("Fecha o aviso. Use X ou círculo no controle, Enter ou Esc no teclado.")
+                .accessibilityLabel("Back to catalog")
+                .accessibilityHint("Closes this notice. Use X or Circle on the controller, Enter or Esc on the keyboard.")
 
                 HStack(spacing: 7) {
                     Text("○").font(.system(size: 15, weight: .light))
-                    Text("Esc  ·  Voltar").font(.system(size: 10, design: .monospaced))
+                    Text("Esc  ·  Back").font(.system(size: 10, design: .monospaced))
                 }
                 .foregroundStyle(Theme.pale.opacity(0.55))
                 .accessibilityHidden(true)

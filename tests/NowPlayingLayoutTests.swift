@@ -15,7 +15,7 @@ struct NowPlayingLayoutTests {
         let examples: [(String, String, NSImage?)] = [
             ("ps1", "Space Jam", square),
             ("ps2", "Need for Speed Underground 2", portrait),
-            ("ps2", "Um título muito longo que não deve aumentar a altura do menu principal", nil)
+            ("ps2", "A very long title that must not increase the height of the main menu", nil)
         ]
         for (index, example) in examples.enumerated() {
             for width in [285.0, 320.0] {
@@ -31,10 +31,10 @@ struct NowPlayingLayoutTests {
             }
         }
         let preview = VStack(alignment: .leading, spacing: 20) {
-            Text("PS1/2 · prévia de layout (dados de teste)").font(.system(size: 12)).foregroundStyle(.white.opacity(0.6))
+            Text("PS1/2 · layout preview (test data)").font(.system(size: 12)).foregroundStyle(.white.opacity(0.6))
             ForEach(Array(examples.enumerated()), id: \.offset) { _, example in
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(example.0.uppercased() + "  ·  LIGADO  ·  00:12:34").font(.system(size: 10, design: .monospaced))
+                    Text(example.0.uppercased() + "  ·  ON  ·  00:12:34").font(.system(size: 10, design: .monospaced))
                         .foregroundStyle(.cyan)
                     NowPlayingGameLabel(consoleKey: example.0, title: example.1, image: example.2)
                 }

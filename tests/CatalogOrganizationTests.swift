@@ -47,7 +47,7 @@ struct CatalogOrganizationTests {
             entry("Antigo", "/games/missing.iso")
         ]
         let grouped = CatalogGrouping.sections(entries: entries.filter { $0.id != "/games/missing.iso" }, layout: moved)
-        require(grouped.map(\.title) == ["Futebol", "Luta", "Biblioteca"], "folders come first and loose games stay in Biblioteca")
+        require(grouped.map(\.title) == ["Futebol", "Luta", "Library"], "folders come first and loose games stay in Library")
         require(grouped[1].games.map(\.title) == ["FIFA 08", "GTA"], "games inside a folder stay A to Z")
         require(grouped[2].games.map(\.title) == ["Cars"], "a game without a folder stays visible")
         require(!grouped.flatMap(\.games).map(\.id).contains("/games/missing.iso"), "a folder cannot invent a missing game")
@@ -77,7 +77,7 @@ struct CatalogOrganizationTests {
         organizer.deleteFolder(folders[1].id, console: "ps2")
         let afterDelete = CatalogGrouping.sections(entries: entries.filter { $0.id != "/games/missing.iso" },
                                                    layout: organizer.layout(for: "ps2"))
-        require(afterDelete.map(\.title) == ["Carros", "Biblioteca"], "deleting a folder keeps the games in Biblioteca")
+        require(afterDelete.map(\.title) == ["Carros", "Library"], "deleting a folder keeps the games in Library")
         require(afterDelete[1].games.map(\.id).contains("/games/FIFA.iso"), "deleting a folder does not remove its games")
 
         let restored = CatalogOrganizer(defaults: defaults)

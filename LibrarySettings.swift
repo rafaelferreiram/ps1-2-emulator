@@ -19,10 +19,10 @@ enum GameLibrarySettingsError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .unsupportedConsole: return "Escolha um console válido: PS1 ou PS2."
-        case .invalidURL: return "Escolha uma pasta do Mac ou de um disco conectado."
-        case .unreadableDirectory: return "Não foi possível acessar esta pasta. Verifique se ela existe e se o aplicativo tem permissão de leitura."
-        case .filesystemRoot: return "Escolha uma pasta dedicada aos jogos, não a raiz inteira do Mac."
+        case .unsupportedConsole: return "Choose a valid console: PS1 or PS2."
+        case .invalidURL: return "Choose a folder on the Mac or on a connected disk."
+        case .unreadableDirectory: return "This folder could not be read. Check that it exists and that the app has permission to read it."
+        case .filesystemRoot: return "Choose a folder dedicated to games, not the root of the Mac."
         }
     }
 }
@@ -94,7 +94,7 @@ final class GameLibrarySettings: ObservableObject {
             throw GameLibrarySettingsError.unreadableDirectory
         }
         var volumePath: String?
-        var volumeName = "Disco local"
+        var volumeName = "Local disk"
         if values.volumeIsInternal == false, let volume = values.volume,
            volume.isFileURL, Self.isValidPath(volume.path), volume.path != "/",
            Self.contains(folder.path, in: volume.path) {
@@ -132,7 +132,7 @@ final class GameLibrarySettings: ObservableObject {
             guard isValidPath(volumePath), volumePath != "/", contains(stored.path, in: volumePath) else { return nil }
         }
         return GameLibraryLocation(folder: URL(fileURLWithPath: stored.path, isDirectory: true),
-            volumePath: stored.volumePath, volumeName: stored.volumePath == nil ? "Disco local" : stored.volumeName)
+            volumePath: stored.volumePath, volumeName: stored.volumePath == nil ? "Local disk" : stored.volumeName)
     }
 
     private static func isValidPath(_ path: String) -> Bool {

@@ -1,110 +1,110 @@
-# Instalar DuckStation e PCSX2 no macOS
+# Install DuckStation and PCSX2 on macOS
 
-O PS1/2 deste repositório é somente a central de abertura e catálogo. DuckStation e PCSX2 são aplicativos independentes. O instalador baixa as dependências oficiais ausentes, mas você ainda precisa fornecer BIOS/jogos e concluir a configuração de cada emulador. Links e requisitos consultados em **29/09/2026**; confira as fontes oficiais ao atualizar, pois os pacotes e requisitos podem mudar.
+The PS1/2 app in this repository is only the launcher and catalog. DuckStation and PCSX2 are separate applications. The installer downloads official dependencies that are missing, but you still provide BIOS and games and finish each emulator's setup. Links and requirements were checked on **29/09/2026**; confirm the official sources when you update, because packages and requirements can change.
 
-## Caminho recomendado: usar o instalador da central
+## Recommended path: use the launcher installer
 
-Depois de clonar o repositório, abra o Terminal na pasta `ps1-2-emulator`:
+After cloning the repository, open Terminal in the `ps1-2-emulator` folder:
 
 ```bash
 bash install.sh --check
 bash install.sh
 ```
 
-O primeiro comando somente diagnostica os pré-requisitos, sem baixar, compilar ou modificar arquivos. O segundo pede confirmação, compila a central e baixa **somente os emuladores que não encontrar**. Também pode dar duplo clique em `Instalar.command` no Finder para executar a instalação no Terminal.
+The first command only checks prerequisites. It does not download, build or change files. The second asks for confirmation, builds the launcher and downloads **only the emulators it does not find**. You can also double-click `Instalar.command` in Finder to run the installer in Terminal.
 
-- Destino padrão: `/Applications`. Para instalar na pasta pessoal, primeiro execute `mkdir -p "$HOME/Applications"` e depois `bash install.sh --destination "$HOME/Applications"`.
-- Fontes: release `latest` oficial de `stenzek/duckstation` e release estável mais recente de `PCSX2/pcsx2`, via API do GitHub. O instalador confere o SHA-256 fornecido pela API, bundle ID e assinatura antes de instalar; não ignora falhas de verificação.
-- Apps com nome padrão e identidade esperada em `/Applications`, `~/Applications` ou no destino escolhido são preservados. O script não atualiza emuladores existentes nem altera suas configurações.
-- Não instala Homebrew, não usa `sudo`, não reinicia o Mac, não aceita licenças/Rosetta, não baixa jogos/BIOS e não remove quarentena dos downloads. Também não abre aplicativos por você.
+- Default destination: `/Applications`. To install in your home Applications folder, first run `mkdir -p "$HOME/Applications"` and then `bash install.sh --destination "$HOME/Applications"`.
+- Sources: the official `latest` release of `stenzek/duckstation` and the latest stable release of `PCSX2/pcsx2`, through the GitHub API. The installer checks the SHA-256 from the API, the bundle ID and the signature before installing. It does not skip a failed check.
+- Apps with the expected name and identity in `/Applications`, `~/Applications` or the chosen destination are kept. The script does not update existing emulators or change their settings.
+- It does not install Homebrew, does not use `sudo`, does not restart the Mac, does not accept licenses or Rosetta, does not download games or BIOS, and does not clear quarantine on downloads. It also does not open apps for you.
 
-Depois de instalar, abra **DuckStation** e **PCSX2** pelo Finder, conclua os assistentes abaixo e teste um jogo em cada um. Para instruções de clone, requisitos da central, opções e backup da versão anterior, consulte [Instalação detalhada no README](../README.md#instalação-detalhada).
+After installing, open **DuckStation** and **PCSX2** from Finder, finish the steps below and try one game in each. For clone instructions, launcher requirements, options and restoring a previous version, see [Detailed installation in the README](../README.md#detailed-installation).
 
-Se preferir instalar os emuladores manualmente, use as fontes oficiais abaixo e rode `bash install.sh --no-emulators` para instalar somente a central.
+If you prefer to install the emulators yourself, use the official sources below and run `bash install.sh --no-emulators` to install only the launcher.
 
 ## PS1 — DuckStation
 
-### Download manual (pule se o instalador já instalou)
+### Manual download (skip if the installer already installed it)
 
-1. Acesse o [site oficial](https://www.duckstation.org/) ou a [distribuição estável oficial no GitHub](https://github.com/stenzek/duckstation/releases/tag/latest).
-2. Baixe `duckstation-mac-release.zip` para macOS.
-3. Extraia o ZIP no Finder e mova **DuckStation.app** para **Aplicativos**, ficando em `/Applications/DuckStation.app`.
+1. Open the [official site](https://www.duckstation.org/) or the [official stable GitHub distribution](https://github.com/stenzek/duckstation/releases/tag/latest).
+2. Download `duckstation-mac-release.zip` for macOS.
+3. Unzip it in Finder and move **DuckStation.app** to **Applications**, so it lives at `/Applications/DuckStation.app`.
 
-### Primeira configuração (também necessária após o instalador)
+### First setup (also required after the installer)
 
-1. Abra o emulador uma vez e conclua o assistente. Indique sua BIOS e a pasta da biblioteca PS1.
-2. Em configurações de controles, selecione/mapeie seu controle. O mapeamento dentro do DuckStation é separado dos botões da central.
-3. Abra um jogo diretamente no DuckStation para conferir a configuração; depois utilize o catálogo da central.
+1. Open the emulator once and finish the wizard. Point it at your BIOS and your PS1 library folder.
+2. In the controller settings, select and map your controller. Mapping inside DuckStation is separate from the launcher buttons.
+3. Open a game directly in DuckStation to confirm the setup, then use the launcher catalog.
 
-A distribuição documentada é universal, para Intel e Apple Silicon, e exige **macOS Ventura 13.3 ou posterior**. A BIOS não acompanha o emulador e deve ser extraída do próprio console. BIN/CUE, CHD, CCD e PBP não criptografado estão entre os formatos documentados. Preserve todos os arquivos associados de um mesmo disco. [Instalação macOS e requisitos no README oficial](https://github.com/stenzek/duckstation#macos).
+The documented build is universal, for Intel and Apple Silicon, and requires **macOS Ventura 13.3 or later**. The BIOS does not come with the emulator and must be dumped from your own console. BIN/CUE, CHD, CCD and unencrypted PBP are among the documented formats. Keep every file that belongs to the same disc. [macOS install and requirements in the official README](https://github.com/stenzek/duckstation#macos).
 
-O mínimo do DuckStation não muda o mínimo da central: o build deste repositório exige **macOS 14+ e Apple Silicon**.
+DuckStation's minimum does not change the launcher's minimum: this repository's build requires **macOS 14+ and Apple Silicon**.
 
 ## PS2 — PCSX2
 
-### Download manual (pule se o instalador já instalou)
+### Manual download (skip if the installer already installed it)
 
-1. Abra a [página oficial de downloads](https://pcsx2.net/downloads/) e escolha **macOS**. Para começar, prefira **Stable**; Nightly recebe mudanças mais frequentes.
-2. Extraia o arquivo `.tar.xz` pelo Finder e mova o app para **Aplicativos**.
-3. Se o pacote vier com a versão no nome, use **PCSX2.app** para corresponder a `/Applications/PCSX2.app`, que é o caminho esperado pela central.
+1. Open the [official downloads page](https://pcsx2.net/downloads/) and choose **macOS**. To start, prefer **Stable**. Nightly changes more often.
+2. Extract the `.tar.xz` in Finder and move the app to **Applications**.
+3. If the package name includes a version, use **PCSX2.app** so the path is `/Applications/PCSX2.app`, which is what the launcher expects.
 
-### Primeira configuração (também necessária após o instalador)
+### First setup (also required after the installer)
 
-1. Abra o PCSX2 e conclua o assistente: pasta da BIOS, biblioteca PS2 e controles.
-2. Se o macOS solicitar **Rosetta**, leia e aceite manualmente o instalador apresentado pelo próprio sistema, caso concorde. O script deste repositório não faz essa aceitação por você.
-3. Teste um jogo diretamente no PCSX2 antes de usar a central.
+1. Open PCSX2 and finish the wizard: BIOS folder, PS2 library and controls.
+2. If macOS asks for **Rosetta**, read and accept the installer the system shows, if you agree. This repository's script does not accept it for you.
+3. Try a game directly in PCSX2 before using the launcher.
 
-Esses passos seguem o [guia oficial de instalação macOS](https://pcsx2.net/docs/setup/running/). A documentação lista **macOS 11 e 8 GB de RAM como mínimos**; níveis superiores indicam 16 GB. A versão documentada para Macs M-series utiliza Rosetta 2. O desempenho depende do jogo, da resolução e das configurações: atender ao mínimo não garante velocidade total em todos os títulos. [Requisitos oficiais do PCSX2](https://pcsx2.net/docs/setup/requirements/).
+These steps follow the [official macOS install guide](https://pcsx2.net/docs/setup/running/). The documentation lists **macOS 11 and 8 GB of RAM as minimums**; higher tiers suggest 16 GB. The documented Mac build for M-series uses Rosetta 2. Performance depends on the game, the resolution and the settings: meeting the minimum does not guarantee full speed in every title. [Official PCSX2 requirements](https://pcsx2.net/docs/setup/requirements/).
 
-Rosetta é um componente da Apple para executar aplicativos Intel em Apple Silicon; não é necessária para o binário ARM64 da central. Confira a [orientação atual da Apple sobre Rosetta](https://support.apple.com/102527) antes de atualizar o sistema, especialmente em versões futuras do macOS.
+Rosetta is an Apple component for running Intel apps on Apple Silicon. The launcher's ARM64 binary does not need it. Check [Apple's current guidance on Rosetta](https://support.apple.com/102527) before updating the system, especially on future macOS versions.
 
-## BIOS e jogos
+## BIOS and games
 
-Não há jogos ou BIOS neste repositório. Utilize arquivos que você tenha autorização para usar, como BIOS extraída do próprio console, cópias dos seus discos quando permitido e homebrew autorizado.
+This repository contains no games or BIOS. Use files you are allowed to use, such as a BIOS dumped from your own console, copies of your own discs where that is permitted, and authorized homebrew.
 
-- PS1: siga as instruções sobre BIOS no [projeto oficial DuckStation](https://github.com/stenzek/duckstation).
-- PS2: siga o [guia oficial de extração da BIOS](https://pcsx2.net/docs/setup/bios/) e o [guia de cópia dos discos](https://pcsx2.net/docs/setup/discs/), que inclui informações para CDs/DVDs no macOS.
+- PS1: follow the BIOS notes in the [official DuckStation project](https://github.com/stenzek/duckstation).
+- PS2: follow the [official BIOS dump guide](https://pcsx2.net/docs/setup/bios/) and the [disc guide](https://pcsx2.net/docs/setup/discs/), which includes notes for CDs and DVDs on macOS.
 
-Não é necessário formatar o SSD para instalar a central. Mantenha BIOS, memory cards, saves e jogos fora da pasta do Git. Nem a central nem o instalador baixam ou fornecem bibliotecas prontas. O instalador não altera esses arquivos, mas o backup da central também não os inclui: mantenha seu próprio backup das partidas.
+You do not need to reformat the SSD to install the launcher. Keep BIOS, memory cards, saves and games outside the Git folder. Neither the launcher nor the installer downloads or supplies a ready-made library. The installer does not change those files, and the launcher backup does not include them either: keep your own backup of your saves.
 
-## Pastas e formatos do catálogo
+## Catalog folders and formats
 
-As pastas padrão são:
+The default folders are:
 
 ```text
 /Volumes/Extreme SSD/Emulacao/PS1/Jogos
 /Volumes/Extreme SSD/Emulacao/PS2/Jogos
 ```
 
-Para manter essas pastas, conecte o SSD e permita o acesso quando o macOS solicitar. Para usar outro local, abra **Pastas de jogos** na central (ou **⌘,**) e escolha uma pasta para PS1 e outra para PS2, no Mac ou em qualquer disco externo. A escolha é salva neste Mac e carrega apenas o catálogo daquele console, incluindo subpastas. Não é preciso editar código nem reinstalar. **Restaurar padrão** volta ao caminho original acima, inclusive offline. Veja [Bibliotecas e capas no README](../README.md#bibliotecas-e-capas).
+To keep those folders, connect the SSD and allow access when macOS asks. To use another location, open **Game folders** in the launcher (or **⌘,**) and choose one folder for PS1 and one for PS2, on the Mac or on any external disk. The choice is saved on this Mac and loads only that console's catalog, including subfolders. You do not edit code or reinstall. **Restore default** returns to the original path above, including while offline. See [Libraries and covers in the README](../README.md#libraries-and-covers).
 
-`--destination` muda o destino dos aplicativos, não a pasta dos jogos. A central lê os arquivos onde estão, sem duplicar sua biblioteca, e não altera a biblioteca configurada dentro do DuckStation/PCSX2. Configure também os emuladores se quiser que suas próprias listas usem a mesma pasta.
+`--destination` changes where the apps are installed, not where the games are. The launcher reads the files where they are, without copying your library, and it does not change the library configured inside DuckStation or PCSX2. Configure the emulators as well if you want their own lists to use the same folder.
 
-Em uma nova máquina, o cache começa vazio; clonar o Git não importa o catálogo de outro Mac. Com a pasta acessível, selecione PS1 ou PS2 e pressione **T / △** para abrir o catálogo. Dentro do catálogo, pressione **T / △** para atualizar a lista e as capas. Só depois da primeira carga bem-sucedida haverá uma lista local para consulta offline. Para jogar, os arquivos precisam estar acessíveis; jogos no disco interno não precisam de SSD externo.
+On a new machine the cache starts empty; cloning Git does not import another Mac's catalog. With the folder available, select PS1 or PS2 and press **T / △** to open the catalog. Inside the catalog, press **T / △** to reload the list and the covers. A local list for offline browsing exists only after the first successful load. To play, the files must be available. Games on the internal disk do not need an external SSD.
 
-| Console | Extensões consideradas pelo catálogo da central |
+| Console | Extensions the launcher catalog considers |
 |---|---|
 | PS1 | `.cue`, `.ccd`, `.chd`, `.iso`, `.pbp`, `.img`, `.bin`, `.m3u` |
 | PS2 | `.iso`, `.chd`, `.cso`, `.zso`, `.gz`, `.bin`, `.img`, `.mdf` |
 
-Essa tabela descreve o scanner da central, não uma garantia de compatibilidade do emulador. Aparecer no catálogo não comprova integridade ou jogabilidade.
+This table describes the launcher's scanner, not a compatibility guarantee from the emulator. Showing up in the catalog does not prove that a file is intact or playable.
 
-- ZIP, RAR e 7z precisam ser extraídos antes e não aparecem como jogos.
-- CUE/CCD/M3U só entram quando seus componentes existem dentro da biblioteca.
-- Para PS1, mantenha CUE e faixas BIN juntos; use a entrada do disco/playlist, não uma faixa de áudio isolada. Uma pasta só com faixas BIN, sem CUE, aparece como um jogo: a faixa 1.
-- Para PS2, o PCSX2 não lê CUE/TOC diretamente: consulte o [guia oficial de discos](https://pcsx2.net/docs/setup/discs/) para os arquivos corretos de cada método de cópia.
-- Para a capa, coloque um PNG, JPG ou WebP na pasta do jogo. O nome `capa` serve, e a única imagem da pasta também. Se o disco estiver em `GAME`, a imagem pode ficar na pasta acima. **Atualizar**, **R** ou **R2 + L2** relê jogos e capas. Pastas como Futebol ou Luta, criadas no catálogo, só organizam a lista: nenhum arquivo é movido.
+- ZIP, RAR and 7z must be extracted first and do not appear as games.
+- CUE, CCD and M3U are included only when their parts exist inside the library.
+- For PS1, keep the CUE and BIN tracks together. Use the disc or playlist entry, not a lone audio track. A folder of BIN tracks with no CUE still appears as one game: track 1.
+- For PS2, PCSX2 does not read CUE/TOC directly. See the [official disc guide](https://pcsx2.net/docs/setup/discs/) for the right files for each dump method.
+- For a cover, put a PNG, JPG or WebP in the game folder. The name `capa` works, and so does the only image in the folder. If the disc is inside `GAME`, the image can sit in the folder above. **Reload**, **R** or **R2 + L2** rereads games and covers. Folders such as Football or Fighting, created in the catalog, only organize the list: no file is moved.
 
-## Problemas comuns
+## Common problems
 
-- **`swiftc`/SDK não encontrado:** execute `xcode-select --install`, conclua a instalação e rode `bash install.sh --check` novamente.
-- **Sem permissão para instalar em `/Applications`:** use a pasta pessoal com `--destination "$HOME/Applications"`, depois de criá-la. Não use `sudo` como atalho.
-- **Falha de download, SHA-256 ou assinatura:** não contorne a verificação. Confira sua conexão, consulte a release oficial e tente novamente; uma mudança no pacote pode exigir atualizar o instalador. Em caso de limite da API do GitHub, aguarde ou faça a instalação manual pela fonte oficial.
-- **“Não encontrei DuckStation/PCSX2”:** confira nomes e caminhos em `/Applications` ou `~/Applications`. Abra cada emulador uma vez pelo Finder; a central prioriza o caminho padrão e também procura o app pelo bundle ID registrado no macOS.
-- **“Lendo jogos e capas…” por muito tempo:** confira se o macOS está aguardando uma resposta ao pedido de acesso ao SSD.
-- **Biblioteca vazia ou desatualizada:** confira o caminho em **Pastas de jogos**, o acesso ao disco e se os jogos já foram extraídos para essa pasta. Se moveu os jogos ou renomeou o volume, escolha a pasta novamente. Abra o catálogo e pressione **T / △** para uma carga completa. Em uma máquina nova, não existe cache anterior para mostrar offline.
-- **Jogo não inicia diretamente no emulador:** revise BIOS, arquivos do disco e configuração no próprio emulador primeiro. A central não corrige esses problemas.
-- **Controle funciona na central, mas não no jogo:** configure-o separadamente dentro do DuckStation ou PCSX2.
-- **Aviso de segurança inesperado:** confirme a origem do arquivo. Não desative proteções do macOS nem remova avisos de arquivos de origem desconhecida como solução genérica.
+- **`swiftc` or the SDK was not found:** run `xcode-select --install`, finish the install and run `bash install.sh --check` again.
+- **No permission to install in `/Applications`:** use your home folder with `--destination "$HOME/Applications"` after creating it. Do not use `sudo` as a shortcut.
+- **Download, SHA-256 or signature failure:** do not bypass the check. Confirm your connection, look at the official release and try again. A changed package may require an installer update. If the GitHub API rate-limits you, wait or install manually from the official source.
+- **"Could not find DuckStation/PCSX2":** check the names and paths in `/Applications` or `~/Applications`. Open each emulator once from Finder. The launcher prefers the default path and also looks up the app by the bundle ID registered with macOS.
+- **"Reading games and covers…" for a long time:** check whether macOS is waiting for you to allow access to the SSD.
+- **Empty or stale library:** check the path in **Game folders**, disk access, and whether the games were extracted into that folder. If you moved the games or renamed the volume, choose the folder again. Open the catalog and press **T / △** for a full load. A new machine has no previous cache to show offline.
+- **A game does not start in the emulator itself:** check the BIOS, the disc files and the setup in that emulator first. The launcher does not fix those problems.
+- **The controller works in the launcher but not in the game:** configure it separately inside DuckStation or PCSX2.
+- **An unexpected security warning:** confirm where the file came from. Do not turn off macOS protections or clear warnings on files from an unknown source as a general fix.
 
-Para compilar/instalar a central e executar os testes, volte ao [README](../README.md).
+To build or install the launcher and run the tests, go back to the [README](../README.md).

@@ -11,7 +11,7 @@ struct EmulatorState: Equatable {
     var activityDescription: String
 
     static let off = EmulatorState(isRunning: false, pid: nil, launchedAt: nil,
-                                   gameTitle: nil, gamePath: nil, activityDescription: "Desligado")
+                                   gameTitle: nil, gamePath: nil, activityDescription: "Off")
 }
 
 /// Reports the current app session and an image that the emulator actually has open.
@@ -102,7 +102,7 @@ final class EmulatorMonitor: ObservableObject {
         }
         var state = EmulatorState(isRunning: true, pid: session.pid, launchedAt: session.launchedAt,
                                   gameTitle: nil, gamePath: nil,
-                                  activityDescription: probe.available ? "Emulador aberto · sem jogo detectado" : "Jogo não identificado")
+                                  activityDescription: probe.available ? "Emulator open · no game detected" : "Game not identified")
         guard probe.available else {
             observations.removeValue(forKey: target.key)
             return state
@@ -118,22 +118,22 @@ final class EmulatorMonitor: ObservableObject {
                 if now.timeIntervalSince(previous.firstSeen) >= 0.75 {
                     state.gameTitle = game.title
                     state.gamePath = game.path
-                    state.activityDescription = "Jogo carregado"
+                    state.activityDescription = "Game loaded"
                 } else {
-                    state.activityDescription = "Verificando jogo…"
+                    state.activityDescription = "Checking game…"
                 }
             } else {
                 observations[target.key] = Observation(session: session, identity: game.identity, firstSeen: now)
-                state.activityDescription = "Verificando jogo…"
+                state.activityDescription = "Checking game…"
             }
         } else {
             observations.removeValue(forKey: target.key)
             if candidates.count > 1 {
-                state.activityDescription = "Jogo não identificado · vários discos abertos"
+                state.activityDescription = "Game not identified · several discs open"
             } else if Self.hasImageOutsideLibrary(in: probe, library: target.library) {
                 // Do not expose or guess titles outside this configured library. The
                 // conservative busy state also prevents an unsafe automatic disc swap.
-                state.activityDescription = "Jogo não identificado · fora da biblioteca"
+                state.activityDescription = "Game not identified · outside the library"
             }
         }
         return state

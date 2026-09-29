@@ -94,7 +94,7 @@ final class StartupAnimationNSView: NSView {
         }
         setAccessibilityElement(true)
         setAccessibilityRole(.image)
-        setAccessibilityLabel("Inicialização do \(consoleName)")
+        setAccessibilityLabel("\(consoleName) startup")
         needsDisplay = true
         if window != nil { resume() }
     }

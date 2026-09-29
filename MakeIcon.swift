@@ -6,7 +6,7 @@ let original = URL(fileURLWithPath: CommandLine.arguments[1])
 let target = URL(fileURLWithPath: CommandLine.arguments[2], isDirectory: true)
 guard let source = CGImageSourceCreateWithURL(original as CFURL, nil),
       let image = CGImageSourceCreateImageAtIndex(source, 0, nil),
-      let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else { fatalError("Logo inválido") }
+      let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else { fatalError("Invalid logo") }
 
 /// macOS 27 Dock icons sit on a squircle inside the square canvas.
 /// Measured from the system Calendar icon at 256 px: the plate is 210 px,
@@ -36,7 +36,7 @@ func dockIcon(from image: CGImage, pixels: Int) -> CGImage {
 
     context.translateBy(x: origin, y: origin)
     layer.render(in: context)
-    guard let masked = context.makeImage() else { fatalError("Falha ao arredondar o ícone") }
+    guard let masked = context.makeImage() else { fatalError("Could not round the icon") }
     return masked
 }
 
@@ -47,7 +47,7 @@ for size in [16, 32, 128, 256, 512] {
         let url = target.appendingPathComponent("icon_\(size)x\(size)\(suffix).png")
         let destination = CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil)!
         CGImageDestinationAddImage(destination, dockIcon(from: image, pixels: pixels), nil)
-        guard CGImageDestinationFinalize(destination) else { fatalError("Falha ao gerar ícone") }
+        guard CGImageDestinationFinalize(destination) else { fatalError("Could not write the icon") }
     }
 }
 

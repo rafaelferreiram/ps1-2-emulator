@@ -138,7 +138,7 @@ struct CatalogCacheTests {
         require(sameFile(artwork?.url, cover) && artwork?.snapshotID == saved.snapshotID,
                 "cached artwork lookup does not require live game or cover readability")
         let failed = await cache.load(f.source, force: true)
-        require(failed.games == saved.games && failed.snapshotID == saved.snapshotID && failed.warning?.contains("último catálogo salvo") == true,
+        require(failed.games == saved.games && failed.snapshotID == saved.snapshotID && failed.warning?.contains("last saved catalog") == true,
                 "failed force returns previous games and explains fallback")
         let diskAfterFailure = try Data(contentsOf: file)
         require(diskAfterFailure == diskBefore, "failed force preserves disk snapshot byte-for-byte")

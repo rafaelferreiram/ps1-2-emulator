@@ -205,10 +205,10 @@ enum CatalogScanner {
         let root = source.root.standardizedFileURL.resolvingSymlinksInPath()
         var isDirectory: ObjCBool = false
         guard fm.fileExists(atPath: root.path, isDirectory: &isDirectory), isDirectory.boolValue else {
-            return Inventory(warning: "Pasta de jogos indisponível. Verifique o caminho e a conexão do disco, se externo.", reliable: false)
+            return Inventory(warning: "Game folder unavailable. Check the path and, if it is external, the disk connection.", reliable: false)
         }
         guard fm.isReadableFile(atPath: root.path) else {
-            return Inventory(warning: "Não foi possível ler a pasta de jogos.", reliable: false)
+            return Inventory(warning: "The game folder could not be read.", reliable: false)
         }
         let supported: Set<String> = source.consoleKey == "ps1"
             ? ["cue", "ccd", "chd", "iso", "pbp", "img", "bin", "m3u"]
@@ -218,7 +218,7 @@ enum CatalogScanner {
         guard let enumerator = fm.enumerator(at: root, includingPropertiesForKeys: keys,
                                              options: [.skipsHiddenFiles, .skipsPackageDescendants],
                                              errorHandler: { _, _ in unreadable = true; return true }) else {
-            return Inventory(warning: "Não foi possível listar a pasta de jogos.", reliable: false)
+            return Inventory(warning: "The game folder could not be listed.", reliable: false)
         }
         var files: [URL] = []
         for case let url as URL in enumerator {
@@ -326,8 +326,8 @@ enum CatalogScanner {
             return comparison == .orderedSame ? $0.id < $1.id : comparison == .orderedAscending
         }
         var warnings: [String] = []
-        if invalidDescriptors > 0 { warnings.append("\(invalidDescriptors) CUE/CCD/lista(s) incompleto(s) não incluído(s).") }
-        if unreadable { warnings.append("Alguns arquivos não puderam ser lidos.") }
+        if invalidDescriptors > 0 { warnings.append("\(invalidDescriptors) incomplete CUE/CCD/playlist(s) left out.") }
+        if unreadable { warnings.append("Some files could not be read.") }
         return Inventory(games: games, warning: warnings.isEmpty ? nil : warnings.joined(separator: " "), members: members,
                          reliable: !unreadable)
     }

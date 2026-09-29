@@ -179,7 +179,7 @@ actor CatalogCache {
         func failure(_ message: String) -> Outcome {
             if let previous {
                 let inventory = CatalogScanner.Inventory(games: previous.inventory.result.games,
-                    warning: "FULL LOAD não concluído. Exibindo o último catálogo salvo. \(message)",
+                    warning: "Full load did not finish. Showing the last saved catalog. \(message)",
                     members: previous.inventory.members)
                 return Outcome(inventory: inventory, snapshot: previous, statistics: metrics)
             }
@@ -190,15 +190,15 @@ actor CatalogCache {
             metrics.fingerprintChecks += 1
             let before: String
             do { before = try fingerprint(source) }
-            catch { return failure("Pasta de jogos indisponível ou sem acesso. Verifique o caminho e as permissões; se for um disco externo, reconecte-o e atualize o catálogo.") }
+            catch { return failure("Game folder unavailable or unreadable. Check the path and permissions; if it is an external disk, reconnect it and reload the catalog.") }
             metrics.scans += 1
             let inventory = CatalogScanner.inventory(source)
             guard inventory.reliable else {
-                return failure(inventory.result.warning ?? "Não foi possível ler a biblioteca com segurança.")
+                return failure(inventory.result.warning ?? "The library could not be read safely.")
             }
             metrics.fingerprintChecks += 1
             guard let after = try? fingerprint(source) else {
-                return failure("A biblioteca ficou indisponível durante a atualização. Verifique o acesso à pasta e tente novamente.")
+                return failure("The library became unavailable during the update. Check access to the folder and try again.")
             }
             guard before == after else { continue }
             let snapshot = Snapshot(version: version, sourceKey: key, fingerprint: after, inventory: inventory,
@@ -207,7 +207,7 @@ actor CatalogCache {
             if write(snapshot, to: file, directory: directory) { metrics.diskWrites += 1 }
             return Outcome(inventory: inventory, snapshot: snapshot, statistics: metrics)
         }
-        return failure("A biblioteca mudou durante a atualização. Atualize novamente quando os arquivos terminarem de copiar.")
+        return failure("The library changed during the update. Reload again when the files have finished copying.")
     }
 
     /// Pure string/JSON validation only. No stat, root resolution, readability

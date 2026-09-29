@@ -133,11 +133,11 @@ final class LauncherModel: ObservableObject {
             if !state(console).isRunning {
                 stopping.remove(console)
                 stopDeadlines.removeValue(forKey: console)
-                notice = "\(console.badge) desligado."
+                notice = "\(console.badge) off."
             } else if let deadline = stopDeadlines[console], now >= deadline {
                 stopping.remove(console)
                 stopDeadlines.removeValue(forKey: console)
-                notice = "\(console.emulator) continua aberto. Confirme ou cancele a saída no emulador."
+                notice = "\(console.emulator) is still open. Confirm or cancel quitting in the emulator."
             }
         }
     }
@@ -197,7 +197,7 @@ final class LauncherModel: ObservableObject {
             catalog.setSource(source, restoreSaved: !fullLoad)
             if fullLoad { catalog.refresh(console.rawValue, force: true) }
         }
-        notice = "Pasta de \(console.badge) atualizada."
+        notice = "\(console.badge) folder updated."
         refreshStorage()
         refreshSessions()
     }
@@ -367,7 +367,7 @@ final class LauncherModel: ObservableObject {
         let folder = folders.indices.contains(catalogFolderIndex) ? folders[catalogFolderIndex] : nil
         switch action {
         case .place:
-            guard let folder else { catalogFolderMessage = "Crie uma pasta para organizar os jogos."; return }
+            guard let folder else { catalogFolderMessage = "Create a folder to organize the games."; return }
             placeSelectedGame(in: folder.id)
         case .rename:
             guard let folder else { return }
@@ -385,12 +385,12 @@ final class LauncherModel: ObservableObject {
             if CatalogNames.cleaned(folderDraft) != nil, let created = organizer.createFolder(named: folderDraft, console: console.rawValue) {
                 folderDraft = ""
                 renamingFolderID = nil
-                catalogFolderMessage = "Pasta \(created.name) criada."
+                catalogFolderMessage = "Folder \(created.name) created."
                 catalogFolderIndex = max(0, organizer.layout(for: console.rawValue).folders.count - 1)
             } else if CatalogNames.cleaned(folderDraft) == nil {
-                catalogFolderMessage = "Escreva o nome da pasta."
+                catalogFolderMessage = "Type the folder name."
             } else {
-                catalogFolderMessage = "Essa pasta já existe, ou o limite de 20 foi atingido."
+                catalogFolderMessage = "That folder already exists, or the limit of 20 was reached."
             }
         }
     }
@@ -479,7 +479,7 @@ final class LauncherModel: ObservableObject {
     func deleteCatalogFolder(_ id: UUID) {
         guard let console = catalogConsole else { return }
         let layout = organizer.layout(for: console.rawValue)
-        let name = layout.folders.first { $0.id == id }?.name ?? "Pasta"
+        let name = layout.folders.first { $0.id == id }?.name ?? "Folder"
         if renamingFolderID == id {
             renamingFolderID = nil
             folderDraft = ""
@@ -488,7 +488,7 @@ final class LauncherModel: ObservableObject {
         revealSection(CatalogGrouping.libraryID, console: console)
         let count = organizer.layout(for: console.rawValue).folders.count
         catalogFolderIndex = count == 0 ? 0 : min(catalogFolderIndex, count - 1)
-        catalogFolderMessage = "\(name) apagada. Os jogos continuam na Biblioteca."
+        catalogFolderMessage = "\(name) deleted. The games stay in Library."
         alignCatalogSelection()
     }
     func placeSelectedGame(in folderID: UUID) {
@@ -499,13 +499,13 @@ final class LauncherModel: ObservableObject {
         if let index = organizer.layout(for: console.rawValue).folders.firstIndex(where: { $0.id == folderID }) {
             catalogFolderIndex = index
         }
-        catalogFolderMessage = "\(game.title) está em \(folder.name)."
+        catalogFolderMessage = "\(game.title) is in \(folder.name)."
     }
     func clearSelectedGameFolder() {
         guard let console = catalogConsole, let game = selectedGame else { return }
         organizer.place(gameID: game.id, in: nil, console: console.rawValue)
         revealSection(CatalogGrouping.libraryID, console: console)
-        catalogFolderMessage = "\(game.title) voltou para Biblioteca."
+        catalogFolderMessage = "\(game.title) returned to Library."
     }
     private func revealSection(_ sectionID: String, console: Console) {
         guard organizer.layout(for: console.rawValue).collapsed.contains(sectionID) else { return }
@@ -520,27 +520,27 @@ final class LauncherModel: ObservableObject {
                 folderDraft = ""
                 catalogFolderMessage = nil
             } else {
-                catalogFolderMessage = "Use um nome novo, de 1 a 24 caracteres."
+                catalogFolderMessage = "Use a new name, from 1 to 24 characters."
             }
             return
         }
         if CatalogNames.cleaned(folderDraft) != nil {
             if let folder = organizer.createFolder(named: folderDraft, console: key) {
                 folderDraft = ""
-                catalogFolderMessage = "Pasta \(folder.name) criada."
+                catalogFolderMessage = "Folder \(folder.name) created."
                 catalogFolderIndex = max(0, organizer.layout(for: key).folders.count - 1)
             } else {
-                catalogFolderMessage = "Essa pasta já existe, ou o limite de 20 foi atingido."
+                catalogFolderMessage = "That folder already exists, or the limit of 20 was reached."
             }
             return
         }
         if !folderDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            catalogFolderMessage = "Use um nome de 1 a 24 caracteres."
+            catalogFolderMessage = "Use a name from 1 to 24 characters."
             return
         }
         let folders = organizer.layout(for: key).folders
         guard folders.indices.contains(catalogFolderIndex) else {
-            catalogFolderMessage = "Crie uma pasta para organizar os jogos."
+            catalogFolderMessage = "Create a folder to organize the games."
             return
         }
         placeSelectedGame(in: folders[catalogFolderIndex].id)
@@ -555,7 +555,7 @@ final class LauncherModel: ObservableObject {
         let forceRefresh = catalogConsole != nil || isStorageAvailable(for: console)
         catalogConsole = console
         catalog.refresh(console.rawValue, force: forceRefresh)
-        if forceRefresh { notice = "Atualizando jogos e capas de \(console.badge)…" }
+        if forceRefresh { notice = "Reloading games and covers for \(console.badge)…" }
     }
     /// Full rescan of the visible console, including covers. From the menu it
     /// opens that console's catalog. A scan already in progress is left alone.
@@ -566,7 +566,7 @@ final class LauncherModel: ObservableObject {
         guard !catalog.loading.contains(console.rawValue) else { return }
         catalogConsole = console
         catalog.refresh(console.rawValue, force: true)
-        notice = "Atualizando jogos e capas de \(console.badge)…"
+        notice = "Reloading games and covers for \(console.badge)…"
     }
     func confirm() {
         guard errorMessage == nil, NSApp.modalWindow == nil else { return }
@@ -610,7 +610,7 @@ final class LauncherModel: ObservableObject {
               !showingLibrarySettings, !showingCatalogFolders, !stopping.contains(console) else { return }
         select(console)
         guard let url = console.applicationURL else {
-            errorMessage = "Não encontrei o \(console.emulator). Coloque o aplicativo na pasta Aplicativos e tente novamente."
+            errorMessage = "Could not find \(console.emulator). Put the app in the Applications folder and try again."
             return
         }
         launching = console
@@ -620,13 +620,13 @@ final class LauncherModel: ObservableObject {
         launchGameTitle = nil
         restartDuckStation = nil
         isOpening = false
-        notice = "Inicializando \(console.badge)…"
+        notice = "Starting \(console.badge)…"
     }
     func cancelLaunch() {
         guard launching != nil, !isOpening || waitingForRestart else { return }
         let exitRequested = waitingForRestart
         clearLaunchState()
-        notice = exitRequested ? "Abertura cancelada; a saída do DuckStation já foi solicitada." : "Abertura cancelada."
+        notice = exitRequested ? "Launch cancelled; DuckStation was already asked to quit." : "Launch cancelled."
     }
     private func clearLaunchState() {
         launching = nil
@@ -651,7 +651,7 @@ final class LauncherModel: ObservableObject {
             return false
         }
         guard GameLaunchCheck.isAvailable(file, library: gameFolder(for: console)) else {
-            errorMessage = "Não foi possível acessar \(title). Verifique os arquivos e as permissões na pasta de \(console.badge):\n\(gameFolder(for: console).path)\n\nUse Pastas de jogos para corrigir o local ou Atualizar, R ou R2+L2 para recarregar o catálogo."
+            errorMessage = "Could not access \(title). Check the files and permissions in the \(console.badge) folder:\n\(gameFolder(for: console).path)\n\nUse Game folders to fix the location, or Reload, R or R2+L2 to reload the catalog."
             return false
         }
         return true
@@ -671,10 +671,10 @@ final class LauncherModel: ObservableObject {
         var restart: (pid: Int32, launchedAt: Date?)?
         if console == .ps1, current.isRunning, let pid = current.pid {
             let alert = NSAlert()
-            alert.messageText = "Abrir \(game.title)?"
-            alert.informativeText = "Para iniciar este jogo diretamente, a central precisa encerrar e reabrir o DuckStation. Salve qualquer sessão antes de continuar. O encerramento será normal, respeitando as confirmações do emulador."
-            alert.addButton(withTitle: "Cancelar")
-            alert.addButton(withTitle: "Abrir jogo")
+            alert.messageText = "Open \(game.title)?"
+            alert.informativeText = "To start this game directly, the launcher needs to quit and reopen DuckStation. Save any session before continuing. Quitting is a normal request and respects the emulator's own confirmations."
+            alert.addButton(withTitle: "Cancel")
+            alert.addButton(withTitle: "Open game")
             guard alert.runModal() == .alertSecondButtonReturn else { return }
             restart = (pid, current.launchedAt)
         }
@@ -697,8 +697,8 @@ final class LauncherModel: ObservableObject {
     }
     private func canOpenGame(_ console: Console) -> Bool {
         let current = state(console)
-        if current.isRunning && (current.gamePath != nil || current.activityDescription != "Emulador aberto · sem jogo detectado") {
-            errorMessage = "O \(console.emulator) já tem uma sessão aberta ou ainda não foi possível confirmar seu estado. Feche o jogo atual no próprio emulador e tente novamente. A central não vai trocar o disco nem interromper sua partida."
+        if current.isRunning && (current.gamePath != nil || current.activityDescription != "Emulator open · no game detected") {
+            errorMessage = "\(console.emulator) already has a session open, or its state could not be confirmed yet. Close the current game in the emulator and try again. The launcher will not swap the disc or interrupt your game."
             return false
         }
         return true
@@ -713,17 +713,17 @@ final class LauncherModel: ObservableObject {
             }
         }
         isOpening = true
-        notice = "Abrindo \(console.emulator)…"
+        notice = "Opening \(console.emulator)…"
         openingText = notice
         if console == .ps1, launchGameURL != nil, state(console).isRunning {
             guard let accepted = restartDuckStation, accepted.pid == state(console).pid,
                   accepted.launchedAt == state(console).launchedAt, let pid = state(console).pid,
                   let app = NSRunningApplication(processIdentifier: pid), app.bundleIdentifier == console.bundleID else {
                 finishLaunch(id, console: console, app: nil, error: nil)
-                errorMessage = "A sessão do DuckStation mudou durante a animação. Nenhuma sessão nova foi encerrada. Tente novamente."
+                errorMessage = "The DuckStation session changed during the animation. No new session was quit. Try again."
                 return
             }
-            openingText = "Reabrindo DuckStation para iniciar o jogo…"
+            openingText = "Reopening DuckStation to start the game…"
             waitingForRestart = true
             app.activate(options: [])
             guard app.terminate() else {
@@ -741,7 +741,7 @@ final class LauncherModel: ObservableObject {
                 }
                 guard let self, self.launchID == id else { return }
                 self.finishLaunch(id, console: console, app: nil, error: nil)
-                self.errorMessage = "O DuckStation continuou aberto. Confirme ou cancele a saída no emulador e tente novamente. Nenhum encerramento foi forçado."
+                self.errorMessage = "DuckStation stayed open. Confirm or cancel quitting in the emulator and try again. Nothing was force-quit."
             }
             return
         }
@@ -750,7 +750,7 @@ final class LauncherModel: ObservableObject {
     private func openRequestedApplication(_ id: UUID, console: Console, url: URL) {
         guard launchID == id else { return }
         waitingForRestart = false
-        openingText = "Abrindo \(console.emulator)…"
+        openingText = "Opening \(console.emulator)…"
         if let gameURL = launchGameURL,
            !checkGameAccess(gameURL, title: launchGameTitle ?? gameURL.deletingPathExtension().lastPathComponent, console: console) {
             clearLaunchState()
@@ -762,7 +762,7 @@ final class LauncherModel: ObservableObject {
             guard canOpenGame(console), console != .ps1 || !state(console).isRunning else {
                 let explanation = errorMessage
                 finishLaunch(id, console: console, app: nil, error: nil)
-                errorMessage = explanation ?? "O DuckStation voltou a abrir antes do envio do jogo. Encerre a sessão e tente novamente."
+                errorMessage = explanation ?? "DuckStation opened again before the game was sent. Quit the session and try again."
                 return
             }
         }
@@ -793,12 +793,12 @@ final class LauncherModel: ObservableObject {
         refreshSessions()
         if let error {
             notice = ""
-            errorMessage = "Não foi possível abrir o \(console.emulator). \(error.localizedDescription)"
+            errorMessage = "Could not open \(console.emulator). \(error.localizedDescription)"
         } else if app != nil {
-            notice = title.map { "Abertura de \($0) enviada ao \(console.emulator)." } ?? "\(console.emulator) aberto. Boa partida."
+            notice = title.map { "Launch of \($0) sent to \(console.emulator)." } ?? "\(console.emulator) is open. Have a good game."
         } else {
             notice = ""
-            errorMessage = "Não foi possível concluir a abertura do \(console.emulator). Verifique sua janela e tente novamente."
+            errorMessage = "Could not finish opening \(console.emulator). Check its window and try again."
         }
     }
     func requestStop(_ console: Console) {
@@ -806,22 +806,22 @@ final class LauncherModel: ObservableObject {
         refreshSessions()
         guard let pid = state(console).pid else { return }
         let alert = NSAlert()
-        alert.messageText = "Desligar \(console.badge)?"
-        alert.informativeText = "O \(console.emulator) será encerrado normalmente. Salve sua partida antes de continuar. Se o emulador pedir confirmação, ela será exibida em sua janela. A central continuará aberta."
+        alert.messageText = "Turn off \(console.badge)?"
+        alert.informativeText = "\(console.emulator) will be asked to quit normally. Save your game before continuing. If the emulator asks for confirmation, that prompt appears in its own window. The launcher stays open."
         alert.alertStyle = .warning
-        alert.addButton(withTitle: "Cancelar")
-        alert.addButton(withTitle: "Desligar")
+        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "Turn off")
         guard alert.runModal() == .alertSecondButtonReturn,
               let app = NSRunningApplication(processIdentifier: pid),
               app.bundleIdentifier == console.bundleID, !app.isTerminated else { return }
         stopping.insert(console)
         stopDeadlines[console] = Date().addingTimeInterval(15)
-        notice = "Solicitando encerramento de \(console.emulator)…"
+        notice = "Asking \(console.emulator) to quit…"
         app.activate(options: [])
         if !app.terminate() {
             stopping.remove(console)
             stopDeadlines.removeValue(forKey: console)
-            errorMessage = "O \(console.emulator) não aceitou o pedido de saída. Salve sua partida e encerre pelo menu do próprio emulador."
+            errorMessage = "\(console.emulator) did not accept the request to quit. Save your game and quit from the emulator's own menu."
         }
         refreshSessions()
     }
@@ -829,7 +829,7 @@ final class LauncherModel: ObservableObject {
         let console = catalogConsole ?? selected
         let location = librarySettings.location(for: console.rawValue)
         if storageMounted { return notice.isEmpty ? "\(location.volumeName) · \(console.badge)" : notice }
-        return "\(location.volumeName) desconectado · Catálogo salvo disponível"
+        return "\(location.volumeName) disconnected · Saved catalog available"
     }
 }
 
@@ -967,17 +967,17 @@ struct ConsoleOption: View {
             .padding(.horizontal, 13).frame(height: 76).contentShape(Rectangle())
           }
           .buttonStyle(.plain).disabled(model.launching != nil || model.stopping.contains(console))
-          .accessibilityLabel("Abrir \(console.name) — \(console.emulator)")
-          .accessibilityValue(selected ? "Selecionado · P1, jogador 1" : "")
-          .help("Reproduzir a abertura de \(console.badge) e abrir \(console.emulator)")
+          .accessibilityLabel("Open \(console.name) — \(console.emulator)")
+          .accessibilityValue(selected ? "Selected · P1, player 1" : "")
+          .help("Play the \(console.badge) startup and open \(console.emulator)")
           HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 6) {
                     Circle().fill(session.isRunning ? Color.green : Theme.pale.opacity(0.3)).frame(width: 5, height: 5)
-                    Text(session.isRunning ? "LIGADO" : "DESLIGADO").font(.system(size: 9, weight: .semibold)).tracking(1)
+                    Text(session.isRunning ? "ON" : "OFF").font(.system(size: 9, weight: .semibold)).tracking(1)
                     if session.isRunning {
                         Text("·  " + model.uptime(console)).font(.system(size: 11, design: .monospaced))
-                            .accessibilityLabel("Tempo ligado: \(model.uptime(console))")
+                            .accessibilityLabel("Time on: \(model.uptime(console))")
                     }
                 }.foregroundStyle(session.isRunning ? Theme.ice : Theme.pale.opacity(0.6))
                 if session.isRunning, let title = session.gameTitle, let path = session.gamePath {
@@ -986,7 +986,7 @@ struct ConsoleOption: View {
                                        source: catalog.source(for: console.rawValue))
                         .id(path)
                 } else {
-                    Text(session.isRunning ? session.activityDescription : "Pronto para iniciar")
+                    Text(session.isRunning ? session.activityDescription : "Ready to start")
                         .font(.system(size: 12)).foregroundStyle(Theme.pale.opacity(0.65))
                         .lineLimit(1).truncationMode(.middle)
                         .help(session.activityDescription)
@@ -994,12 +994,12 @@ struct ConsoleOption: View {
             }.frame(maxWidth: .infinity, alignment: .leading)
             if session.isRunning {
                 Button { model.requestStop(console) } label: {
-                    Label(model.stopping.contains(console) ? "Saindo…" : "Desligar", systemImage: "power")
+                    Label(model.stopping.contains(console) ? "Quitting…" : "Turn off", systemImage: "power")
                         .font(.system(size: 11)).padding(.horizontal, 10).padding(.vertical, 7)
                         .foregroundStyle(Color(red: 1, green: 0.65, blue: 0.64))
                         .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 5))
                 }.buttonStyle(.plain).disabled(model.stopping.contains(console) || model.launching != nil)
-                 .accessibilityLabel("Desligar \(console.badge) — \(console.emulator)")
+                 .accessibilityLabel("Turn off \(console.badge) — \(console.emulator)")
             }
           }.padding(.leading, 13 + PlayerOneIndicator.width + 15).padding(.trailing, 13).frame(height: 73, alignment: .top)
         }
@@ -1025,7 +1025,7 @@ struct ConsolePreview: View {
                 .shadow(color: Theme.blue.opacity(0.10), radius: 16)
             HStack(spacing: 8) {
                 Text(console.badge).font(.system(size: 11, weight: .medium)).foregroundStyle(Theme.ice)
-                Text("Prévia · sem iniciar o emulador").font(.system(size: 10)).foregroundStyle(Theme.pale.opacity(0.65))
+                Text("Preview · does not start the emulator").font(.system(size: 10)).foregroundStyle(Theme.pale.opacity(0.65))
             }
         }
         .allowsHitTesting(false)
@@ -1040,20 +1040,20 @@ struct SystemMenu: View {
             HStack(spacing: 18) {
                 if let logo = Theme.images["Logo"] {
                     Image(nsImage: logo).resizable().scaledToFit().frame(width: 48, height: 48)
-                        .clipShape(RoundedRectangle(cornerRadius: 10)).accessibilityLabel("Logo PlayStation")
+                        .clipShape(RoundedRectangle(cornerRadius: 10)).accessibilityLabel("PlayStation logo")
                 }
                 VStack(alignment: .leading, spacing: 3) {
                     Text("PS1/2").font(.system(size: 27, weight: .light, design: .rounded)).tracking(3)
                         .foregroundStyle(Theme.ice).shadow(color: Theme.blue.opacity(0.7), radius: 12)
-                    Text("Playstation Retro Emulator").font(.system(size: 9, weight: .medium)).tracking(1.5)
+                    Text("PlayStation Retro Emulator").font(.system(size: 9, weight: .medium)).tracking(1.5)
                         .foregroundStyle(Theme.pale.opacity(0.6))
                 }
                 Spacer()
                 CatalogReloadButton(model: model, catalog: model.catalog)
                 Button { model.showLibrarySettings() } label: {
-                    Label("Pastas de jogos", systemImage: "folder.badge.gearshape")
+                    Label("Game folders", systemImage: "folder.badge.gearshape")
                         .font(.system(size: 11)).foregroundStyle(Theme.ice.opacity(0.85))
-                }.buttonStyle(.plain).help("Escolher as pastas de PS1 e PS2 · ⌘,")
+                }.buttonStyle(.plain).help("Choose the PS1 and PS2 folders · ⌘,")
                 TimelineView(.periodic(from: .now, by: 30)) { time in
                     VStack(alignment: .trailing, spacing: 5) {
                         Text(time.date, format: .dateTime.hour().minute()).font(.system(size: 16, weight: .regular, design: .monospaced))
@@ -1070,17 +1070,17 @@ struct SystemMenu: View {
             VStack(spacing: 21) {
                 Rectangle().fill(LinearGradient(colors: [.clear, Theme.ice.opacity(0.19), .clear], startPoint: .leading, endPoint: .trailing)).frame(height: 1)
                 HStack(spacing: 24) {
-                    Button { model.confirm() } label: { hint("×", "Confirmar", "Enter", Theme.ice) }
-                    Button { model.back() } label: { hint("○", "Voltar", "Esc", Color(red: 0.92, green: 0.49, blue: 0.51)) }
-                    Button { model.toggleFullscreen?() } label: { hint("□", model.fullscreen ? "Janela" : "Tela cheia", "F", Color(red: 0.83, green: 0.58, blue: 0.80)) }
-                    Button { model.showCatalog() } label: { hint("△", "Listar jogos \(model.selected.badge)", "T", Color(red: 0.4, green: 0.9, blue: 0.68)) }
-                        .accessibilityLabel("Listar jogos \(model.selected.badge)")
+                    Button { model.confirm() } label: { hint("×", "Confirm", "Enter", Theme.ice) }
+                    Button { model.back() } label: { hint("○", "Back", "Esc", Color(red: 0.92, green: 0.49, blue: 0.51)) }
+                    Button { model.toggleFullscreen?() } label: { hint("□", model.fullscreen ? "Window" : "Full screen", "F", Color(red: 0.83, green: 0.58, blue: 0.80)) }
+                    Button { model.showCatalog() } label: { hint("△", "List \(model.selected.badge) games", "T", Color(red: 0.4, green: 0.9, blue: 0.68)) }
+                        .accessibilityLabel("List \(model.selected.badge) games")
                     Spacer()
                     HStack(spacing: 8) {
                         Image(systemName: "arrow.up.arrow.down").font(.system(size: 12))
-                        Text("Selecionar").font(.system(size: 12))
+                        Text("Select").font(.system(size: 12))
                     }.foregroundStyle(Theme.pale.opacity(0.52))
-                     .help("Setas, direcional ou analógico esquerdo para selecionar")
+                     .help("Arrow keys, D-pad or left stick to select")
                 }.buttonStyle(.plain)
                 HStack(spacing: 7) {
                     Circle().fill(model.storageMounted ? Theme.ice.opacity(0.8) : Color.orange).frame(width: 4, height: 4)
@@ -1108,9 +1108,9 @@ struct SystemMenu: View {
     }
     private var consoleChoices: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Emulador").font(.system(size: 32, weight: .light, design: .rounded))
+            Text("Emulator").font(.system(size: 32, weight: .light, design: .rounded))
                 .foregroundStyle(Theme.pale).shadow(color: Theme.blue.opacity(0.25), radius: 9).padding(.bottom, 9)
-            Text("Selecione um console · acompanhe sua sessão").font(.system(size: 12)).tracking(0.6)
+            Text("Select a console · follow its session").font(.system(size: 12)).tracking(0.6)
                 .foregroundStyle(Theme.pale.opacity(0.62)).padding(.bottom, 18)
             ConsoleOption(console: .ps1, model: model)
             ConsoleOption(console: .ps2, model: model)
@@ -1132,7 +1132,7 @@ struct BootOverlay: View {
             Spacer()
             Text("PS1/2").font(.system(size: 62, weight: .ultraLight, design: .rounded)).tracking(11)
                 .foregroundStyle(.white).shadow(color: Theme.blue, radius: 28)
-            Text("Playstation Retro Emulator").font(.system(size: 10, weight: .light)).tracking(4)
+            Text("PlayStation Retro Emulator").font(.system(size: 10, weight: .light)).tracking(4)
                 .foregroundStyle(Theme.ice.opacity(0.7))
             Spacer()
             Button("Enter ou clique para continuar") { model.finishBoot() }
@@ -1168,10 +1168,10 @@ struct LauncherView: View {
                     Color.black.ignoresSafeArea()
                     VStack(spacing: 18) {
                         HStack {
-                            Text("INICIANDO \(console.badge)").tracking(3)
+                            Text("STARTING \(console.badge)").tracking(3)
                             Spacer()
                             if !model.isOpening || model.waitingForRestart {
-                                Button("Cancelar · Esc") { model.cancelLaunch() }.buttonStyle(.plain)
+                                Button("Cancel · Esc") { model.cancelLaunch() }.buttonStyle(.plain)
                             }
                         }.font(.system(size: 12)).foregroundStyle(Theme.pale.opacity(0.6))
                         if model.isOpening {
@@ -1182,7 +1182,7 @@ struct LauncherView: View {
                             StartupAnimationView(resourceName: console == .ps1 ? "PS1Startup" : "PS2Startup", reducedMotion: model.reduceMotion) {
                                 model.animationFinished(id)
                             }.id(id)
-                            Text(model.launchGameTitle.map { "\($0) · \(console.emulator)" } ?? "A abertura termina antes de acessar o \(console.emulator)")
+                            Text(model.launchGameTitle.map { "\($0) · \(console.emulator)" } ?? "The startup finishes before \(console.emulator) is opened")
                                 .font(.system(size: 11)).foregroundStyle(Theme.pale.opacity(0.4))
                         }
                     }.padding(35).frame(maxWidth: 1000, maxHeight: .infinity)
@@ -1576,7 +1576,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func showAbout() {
         let alert = NSAlert()
         alert.messageText = "PS1/2"
-        alert.informativeText = "Versão 4.12 · Interface inspirada no PlayStation 2\n\nEm Pastas de jogos (⌘,), escolha uma biblioteca para cada console no Mac ou em um disco externo. O padrão continua no Extreme SSD. Os arquivos não são movidos e as configurações dos emuladores permanecem intactas.\n\nNo catálogo, ↑ no primeiro jogo chega em A–Z, Pastas, Atualizar e Disco. × confirma a opção marcada e ↓ volta aos jogos.\n\nCatálogos e capas salvos podem ser consultados offline. Para jogar, os arquivos devem estar acessíveis; reconectar um disco não inicia jogos automaticamente.\n\nUse setas, direcional ou analógico esquerdo para selecionar, Enter / X para confirmar, T / △ para listar jogos, R ou R2+L2 para recarregar jogos e capas, L1 / A e R1 / Z para a ordem, P ou Options para pastas, C para minimizar a pasta do jogo, F / □ para tela cheia e Esc / ○ para voltar. Solte o analógico ao centro ao trocar de tela.\n\nLogo: fornecido pelo usuário.\nFotos: Evan-Amos / Wikimedia — domínio público.\nGIFs: Tenor; créditos completos no pacote do app.\n\nInicializador pessoal para DuckStation e PCSX2, sem vínculo oficial com a Sony."
+        alert.informativeText = "Version 4.12 · Interface inspired by the PlayStation 2\n\nIn Game folders (⌘,), choose a library for each console on the Mac or on an external disk. The default stays on the Extreme SSD. Files are not moved and the emulator settings stay as they are.\n\nIn the catalog, ↑ on the first game reaches A–Z, Folders, Reload and Disk. × confirms the marked option and ↓ returns to the games.\n\nSaved catalogs and covers can be browsed offline. To play, the files must be available; reconnecting a disk does not start games automatically.\n\nUse the arrow keys, D-pad or left stick to select, Enter / X to confirm, T / △ to list games, R or R2+L2 to reload games and covers, L1 / A and R1 / Z for the order, P or Options for folders, C to collapse the selected game's folder, F / □ for full screen and Esc / ○ to go back. Return the stick to center when changing screens.\n\nLogo: supplied by the user.\nPhotos: Evan-Amos / Wikimedia — public domain.\nGIFs: Tenor; full credits are in the app package.\n\nA personal launcher for DuckStation and PCSX2, with no official link to Sony."
         alert.icon = Theme.images["Logo"]
         alert.addButton(withTitle: "OK")
         alert.runModal()
@@ -1585,19 +1585,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let menu = NSMenu()
         let appItem = NSMenuItem()
         let appMenu = NSMenu(title: "PS1/2")
-        appMenu.addItem(withTitle: "Sobre PS1/2", action: #selector(showAbout), keyEquivalent: "")
-        appMenu.addItem(withTitle: "Pastas de jogos…", action: #selector(showGameFolders), keyEquivalent: ",")
+        appMenu.addItem(withTitle: "About PS1/2", action: #selector(showAbout), keyEquivalent: "")
+        appMenu.addItem(withTitle: "Game folders…", action: #selector(showGameFolders), keyEquivalent: ",")
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Ocultar PS1/2", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        appMenu.addItem(withTitle: "Hide PS1/2", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Sair de PS1/2", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: "Quit PS1/2", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = appMenu
         menu.addItem(appItem)
         let item = NSMenuItem()
-        let windowMenu = NSMenu(title: "Janela")
+        let windowMenu = NSMenu(title: "Window")
         windowMenu.addItem(withTitle: "PS1/2", action: #selector(showWindow), keyEquivalent: "0")
-        windowMenu.addItem(withTitle: "Tela cheia", action: #selector(toggleFullscreen), keyEquivalent: "f").keyEquivalentModifierMask = [.command, .control]
-        windowMenu.addItem(withTitle: "Minimizar", action: #selector(NSWindow.miniaturize(_:)), keyEquivalent: "m")
+        windowMenu.addItem(withTitle: "Full screen", action: #selector(toggleFullscreen), keyEquivalent: "f").keyEquivalentModifierMask = [.command, .control]
+        windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.miniaturize(_:)), keyEquivalent: "m")
         item.submenu = windowMenu
         menu.addItem(item)
         NSApp.mainMenu = menu
@@ -1613,9 +1613,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         model.choosingLibraryFolder = true
         controllerInput?.suspendAnalogNavigation()
         let panel = NSOpenPanel()
-        panel.title = "Pasta de jogos \(console.badge)"
-        panel.message = "Escolha a pasta com os jogos de \(console.badge), no Mac ou em um disco externo. Nada será movido."
-        panel.prompt = "Usar esta pasta"
+        panel.title = "\(console.badge) game folder"
+        panel.message = "Choose the folder with the \(console.badge) games, on the Mac or on an external disk. Nothing will be moved."
+        panel.prompt = "Use this folder"
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false

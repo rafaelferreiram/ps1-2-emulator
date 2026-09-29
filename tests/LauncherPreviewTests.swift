@@ -142,7 +142,7 @@ struct LauncherPreviewTests {
         require(!offline.storageMounted, "offline startup does not require the SSD")
         for console in Console.allCases {
             let absent = offline.gameFolder(for: console).appendingPathComponent("Offline-fixture-does-not-exist.iso")
-            let game = CatalogGame(id: absent.path, consoleKey: console.rawValue, title: "Jogo de teste", fileURL: absent, coverURL: nil)
+            let game = CatalogGame(id: absent.path, consoleKey: console.rawValue, title: "Test game", fileURL: absent, coverURL: nil)
             offline.catalogConsole = console
             offline.launchGame(game)
             require(offline.storageNotice == StorageNotice(gameTitle: game.title, consoleName: console.badge), "missing SSD shows the console-styled notice")

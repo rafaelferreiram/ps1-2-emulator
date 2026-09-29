@@ -23,7 +23,7 @@ struct LibrarySettingsTests {
             checks += 1
             precondition(condition, "FAIL: \(message)")
         }
-        func saved(_ path: String, volumePath: String? = nil, volumeName: String = "Disco local", version: Int = 1) throws -> Data {
+        func saved(_ path: String, volumePath: String? = nil, volumeName: String = "Local disk", version: Int = 1) throws -> Data {
             var object: [String: Any] = ["version": version, "path": path, "volumeName": volumeName]
             if let volumePath { object["volumePath"] = volumePath }
             return try JSONSerialization.data(withJSONObject: object)
@@ -40,7 +40,7 @@ struct LibrarySettingsTests {
         let observation = settings.$locations.dropFirst().sink { _ in notifications += 1 }
         check(try settings.setFolder(localPS1, for: "ps1"), "selecting valid local folder changes PS1")
         check(settings.folder(for: "ps1") == localPS1.standardizedFileURL.resolvingSymlinksInPath(), "selected folder stored")
-        check(!settings.location(for: "ps1").isExternal && settings.location(for: "ps1").volumeName == "Disco local", "local volume described accurately")
+        check(!settings.location(for: "ps1").isExternal && settings.location(for: "ps1").volumeName == "Local disk", "local volume described accurately")
         check(settings.location(for: "ps2") == GameLibrarySettings.defaultLocation(for: "ps2"), "PS1 selection preserves PS2")
         check(notifications == 1, "selection publishes once")
         check(!(try settings.setFolder(localPS1, for: "ps1")), "same folder is a no-op")

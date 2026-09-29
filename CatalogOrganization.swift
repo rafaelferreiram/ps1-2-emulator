@@ -49,7 +49,7 @@ enum CatalogGrouping {
             return layout.ascending ? comparison == .orderedAscending : comparison == .orderedDescending
         }
         guard !layout.folders.isEmpty else {
-            return [CatalogSection(id: libraryID, title: "Biblioteca", games: ordered, collapsible: false, collapsed: false)]
+            return [CatalogSection(id: libraryID, title: "Library", games: ordered, collapsible: false, collapsed: false)]
         }
         var used = Set<String>()
         var sections: [CatalogSection] = []
@@ -61,7 +61,7 @@ enum CatalogGrouping {
         }
         let rest = ordered.filter { !used.contains($0.id) }
         if !rest.isEmpty {
-            sections.append(CatalogSection(id: libraryID, title: "Biblioteca", games: rest, collapsible: true,
+            sections.append(CatalogSection(id: libraryID, title: "Library", games: rest, collapsible: true,
                                             collapsed: layout.collapsed.contains(libraryID)))
         }
         return sections
@@ -194,7 +194,7 @@ final class CatalogOrganizer: ObservableObject {
         store(layout, console: console)
     }
 
-    /// A game stays in one pasta. `nil` returns it to Biblioteca. Files are not moved.
+    /// A game stays in one folder. `nil` returns it to Library. Files are not moved.
     func place(gameID: String, in folderID: UUID?, console: String) {
         guard Self.consoles.contains(console), !gameID.isEmpty, !gameID.contains("\n") else { return }
         var layout = layout(for: console)
