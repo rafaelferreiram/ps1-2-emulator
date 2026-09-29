@@ -23,6 +23,9 @@ xcrun swiftc -O -parse-as-library -target arm64-apple-macosx14.0 -framework AppK
     -module-cache-path "$launcher_source/cache" "$launcher_source/PS12.swift" "$launcher_source/ControllerInput.swift" \
     "$launcher_source/EmulatorMonitor.swift" "$launcher_source/StartupAnimation.swift" "$launcher_source/HoverAnimation.swift" \
     "$launcher_source/GameCatalog.swift" "$launcher_source/GameCatalogView.swift" "$launcher_source/NowPlayingGameView.swift" \
+    "$launcher_source/CatalogCache.swift" "$launcher_source/CoverImageCache.swift" \
+    "$launcher_source/GameLaunchCheck.swift" \
+    "$launcher_source/StorageNoticeView.swift" \
     -o "$launcher_bundle/Contents/MacOS/PS12"
 # Some synced folders add Finder metadata to newly created application bundles.
 if xattr -p com.apple.FinderInfo "$launcher_bundle" >/dev/null 2>&1; then

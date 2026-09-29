@@ -1,46 +1,40 @@
 import AppKit
 import SwiftUI
-import ImageIO
 
 @MainActor
 private final class CatalogCover: ObservableObject {
     @Published var image: NSImage?
-    private static let cache = NSCache<NSURL, NSImage>()
-    private var task: Task<Void, Never>?
+    private var requestID = UUID()
 
-    init(url: URL?) {
-        guard let url else { return }
-        if let cached = Self.cache.object(forKey: url as NSURL) { image = cached; return }
-        task = Task { [weak self] in
-            let thumbnail = await Task.detached(priority: .utility) {
-                guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil as CGImage? }
-                return CGImageSourceCreateThumbnailAtIndex(source, 0, [
-                    kCGImageSourceCreateThumbnailFromImageAlways: true,
-                    kCGImageSourceThumbnailMaxPixelSize: 480,
-                    kCGImageSourceCreateThumbnailWithTransform: true
-                ] as CFDictionary)
-            }.value
-            guard let self, !Task.isCancelled, let thumbnail else { return }
-            let image = NSImage(cgImage: thumbnail, size: NSSize(width: thumbnail.width, height: thumbnail.height))
-            Self.cache.setObject(image, forKey: url as NSURL, cost: thumbnail.width * thumbnail.height * 4)
-            Self.cache.totalCostLimit = 32 * 1024 * 1024
-            self.image = image
-        }
+    func load(_ url: URL?, snapshotID: String?) async {
+        let request = UUID()
+        requestID = request
+        image = nil
+        guard let url, let snapshotID, !Task.isCancelled else { return }
+        // 145 pt artwork at Retina resolution; catalog and menu share the cache.
+        let thumbnail = await CoverImageCache.shared.image(at: url, maxPixelSize: 320, snapshotID: snapshotID)
+        guard requestID == request, !Task.isCancelled, let thumbnail else { return }
+        image = NSImage(cgImage: thumbnail, size: NSSize(width: thumbnail.width, height: thumbnail.height))
     }
-    deinit { task?.cancel() }
+}
+
+private struct CoverRequest: Hashable {
+    let url: URL?
+    let snapshotID: String?
 }
 
 private struct GameCard: View {
     let game: CatalogGame
     let selected: Bool
+    let snapshotID: String?
     let action: () -> Void
-    @StateObject private var cover: CatalogCover
+    @StateObject private var cover = CatalogCover()
 
-    init(game: CatalogGame, selected: Bool, action: @escaping () -> Void) {
+    init(game: CatalogGame, selected: Bool, snapshotID: String?, action: @escaping () -> Void) {
         self.game = game
         self.selected = selected
+        self.snapshotID = snapshotID
         self.action = action
-        _cover = StateObject(wrappedValue: CatalogCover(url: game.coverURL))
     }
     private var cardHelp: String {
         let coverName = game.coverURL?.lastPathComponent ?? "não disponível"
@@ -79,6 +73,9 @@ private struct GameCard: View {
          .accessibilityLabel("Selecionar \(game.title)")
          .accessibilityValue(selected ? "Selecionado" : "")
          .help(cardHelp)
+         .task(id: CoverRequest(url: game.coverURL, snapshotID: snapshotID)) {
+             await cover.load(game.coverURL, snapshotID: snapshotID)
+         }
     }
 }
 
@@ -105,7 +102,8 @@ struct GameCatalogView: View {
                 Spacer()
                 VStack(alignment: .trailing, spacing: 5) {
                     Text("\(games.count) jogos · \(console.emulator)").font(.system(size: 13)).foregroundStyle(Theme.pale)
-                    Text("Catálogo do Extreme SSD").font(.system(size: 10)).tracking(0.3).foregroundStyle(Theme.pale.opacity(0.65))
+                    Text(model.storageMounted ? "Última carga completa · △/T atualiza" : "Catálogo offline · Conecte o SSD para jogar")
+                        .font(.system(size: 10)).tracking(0.3).foregroundStyle(Theme.pale.opacity(0.65))
                 }
             }.padding(.top, 35).padding(.bottom, 22)
             if let error = catalog.errors[console.rawValue] {
@@ -114,13 +112,13 @@ struct GameCatalogView: View {
             if loading && games.isEmpty {
                 VStack(spacing: 15) {
                     ProgressView()
-                    Text("Lendo jogos e capas de \(console.badge)…").foregroundStyle(Theme.pale)
+                    Text("Carregando catálogo de \(console.badge)…").foregroundStyle(Theme.pale)
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if games.isEmpty {
                 VStack(spacing: 15) {
                     Image(systemName: "externaldrive").font(.system(size: 38, weight: .ultraLight)).foregroundStyle(Theme.ice)
-                    Text("Nenhum jogo disponível neste console").font(.system(size: 20, weight: .light))
-                    Text("Conecte o Extreme SSD e use △ ou T para atualizar.\nApenas imagens prontas para abrir entram no catálogo; arquivos ZIP, RAR e 7z ficam de fora.")
+                    Text("Nenhum jogo salvo neste catálogo").font(.system(size: 20, weight: .light))
+                    Text("Conecte o Extreme SSD e use △ ou T para uma carga completa.\nO catálogo mostra a última lista salva; os arquivos são verificados ao abrir o jogo.")
                         .font(.system(size: 12)).multilineTextAlignment(.center).foregroundStyle(Theme.pale.opacity(0.6))
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -128,8 +126,8 @@ struct GameCatalogView: View {
                     ScrollView(.vertical) {
                         LazyVGrid(columns: columns, spacing: 16) {
                             ForEach(games) { game in
-                                GameCard(game: game, selected: selection?.id == game.id) { model.selectGame(game) }
-                                    .id(game.coverURL)
+                                GameCard(game: game, selected: selection?.id == game.id,
+                                         snapshotID: catalog.snapshotIDs[console.rawValue]) { model.selectGame(game) }
                                     .id(game.id)
                             }
                         }.padding(5)

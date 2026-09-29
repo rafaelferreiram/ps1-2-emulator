@@ -61,7 +61,12 @@ struct NowPlayingLayoutTests {
         let png = NSBitmapImageRep(data: image.tiffRepresentation!)!.representation(using: .png, properties: [:])!
         try png.write(to: covers.appendingPathComponent("Example.png"))
         let source = CatalogSource(consoleKey: "ps2", root: root, covers: covers, database: nil)
-        let loader = NowPlayingArtwork()
+        let catalogCache = CatalogCache(directory: output.appendingPathComponent("catalog-cache"))
+        let loader = NowPlayingArtwork(catalogCache: catalogCache,
+                                       coverCache: CoverImageCache(directory: output.appendingPathComponent("cover-cache")))
+        await loader.load(path: disc.path, source: source)
+        precondition(loader.image == nil, "Now-playing must not scan the library when no snapshot exists")
+        _ = await catalogCache.load(source, force: true)
         await loader.load(path: disc.path, source: source)
         precondition(loader.image != nil, "Matching artwork must decode")
         precondition(max(loader.image!.size.width, loader.image!.size.height) <= 108, "Thumbnail must be bounded")

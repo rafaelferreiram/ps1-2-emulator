@@ -2,7 +2,7 @@ import Foundation
 import Combine
 import ImageIO
 
-struct CatalogGame: Identifiable, Equatable, Sendable {
+struct CatalogGame: Identifiable, Equatable, Codable, Sendable {
     let id: String
     let consoleKey: String
     let title: String
@@ -10,9 +10,16 @@ struct CatalogGame: Identifiable, Equatable, Sendable {
     let coverURL: URL?
 }
 
-struct CatalogScanResult: Sendable {
+struct CatalogScanResult: Codable, Sendable {
     let games: [CatalogGame]
     let warning: String?
+    let snapshotID: String?
+
+    init(games: [CatalogGame], warning: String?, snapshotID: String? = nil) {
+        self.games = games
+        self.warning = warning
+        self.snapshotID = snapshotID
+    }
 }
 
 /// Read-only inventory. Enumeration and small metadata reads happen off the UI thread.
@@ -21,20 +28,89 @@ final class GameCatalog: ObservableObject {
     @Published private(set) var games: [String: [CatalogGame]] = ["ps1": [], "ps2": []]
     @Published private(set) var loading: Set<String> = []
     @Published private(set) var errors: [String: String] = [:]
+    @Published private(set) var revisions: [String: Int] = [:]
+    @Published private(set) var snapshotIDs: [String: String] = [:]
+    private var generations: [String: Int] = [:]
+    private let cache: CatalogCache
+    private let coverCache: CoverImageCache
+    private let sources: [String: CatalogSource]?
 
-    func refresh(_ consoleKey: String) {
-        guard let source = CatalogSource.installed(consoleKey), !loading.contains(consoleKey) else { return }
+    init(cache: CatalogCache = .shared, coverCache: CoverImageCache = .shared, sources: [String: CatalogSource]? = nil) {
+        self.cache = cache
+        self.coverCache = coverCache
+        self.sources = sources
+    }
+
+    private func source(for key: String) -> CatalogSource? {
+        if let sources { return sources[key] }
+        return CatalogSource.installed(key)
+    }
+
+    /// Populate both console menus from local snapshots at app startup, including
+    /// offline starts. No cached inventory means no automatic scan. Restoration
+    /// does not claim `loading`, so an explicit user refresh can supersede it.
+    @discardableResult
+    func restoreSavedCatalogs() -> Task<Void, Never> {
+        var restores: [Task<Void, Never>] = []
+        for key in ["ps1", "ps2"] {
+            guard generations[key] == nil, let source = source(for: key) else { continue }
+            let generation = 1
+            generations[key] = generation
+            let cache = self.cache
+            restores.append(Task { [weak self] in
+                guard let result = await cache.loadSaved(source), let self,
+                      self.publish(result, for: key, generation: generation) else { return }
+                await self.warm(result, for: key, generation: generation)
+            })
+        }
+        return Task { for restore in restores { await restore.value } }
+    }
+
+    func refresh(_ consoleKey: String, force: Bool = false) {
+        guard let source = source(for: consoleKey), force || !loading.contains(consoleKey) else { return }
+        let generation = (generations[consoleKey] ?? 0) + 1
+        generations[consoleKey] = generation
         loading.insert(consoleKey)
         errors.removeValue(forKey: consoleKey)
+        let cache = self.cache
         Task { [weak self] in
-            let result = await Task.detached(priority: .userInitiated) {
-                CatalogScanner.scan(source)
-            }.value
-            guard let self else { return }
-            self.games[consoleKey] = result.games
-            self.errors[consoleKey] = result.warning
-            self.loading.remove(consoleKey)
+            let result = await cache.load(source, force: force)
+            guard let self, self.publish(result, for: consoleKey, generation: generation) else { return }
+            await self.warm(result, for: consoleKey, generation: generation)
         }
+    }
+
+    private func publish(_ result: CatalogScanResult, for key: String, generation: Int) -> Bool {
+        guard generations[key] == generation else { return false }
+        games[key] = result.games
+        errors[key] = result.warning
+        snapshotIDs[key] = result.snapshotID
+        loading.remove(key)
+        revisions[key, default: 0] += 1
+        return true
+    }
+
+    /// Model-owned warming survives closing the catalog view. Snapshot cache
+    /// hits use local thumbnails; only a missing thumbnail tries its source art.
+    private func warm(_ result: CatalogScanResult, for key: String, generation: Int) async {
+        guard let snapshotID = result.snapshotID else { return }
+        for url in Set(result.games.compactMap(\.coverURL)) {
+            guard generations[key] == generation else { return }
+            _ = await coverCache.image(at: url, maxPixelSize: 320, snapshotID: snapshotID)
+            guard generations[key] == generation else { return }
+            _ = await coverCache.image(at: url, maxPixelSize: 108, snapshotID: snapshotID)
+        }
+    }
+
+    /// Explicitly clear the visible model when resetting the catalog, not merely
+    /// when the SSD disconnects: saved inventories remain browsable offline.
+    func invalidate(_ consoleKey: String) {
+        generations[consoleKey, default: 0] += 1
+        games[consoleKey] = []
+        errors.removeValue(forKey: consoleKey)
+        snapshotIDs.removeValue(forKey: consoleKey)
+        loading.remove(consoleKey)
+        revisions[consoleKey, default: 0] += 1
     }
 }
 
@@ -66,7 +142,7 @@ struct CatalogSource: Sendable {
 }
 
 enum CatalogScanner {
-    private static let excludedDirectories: Set<String> = [
+    static let excludedDirectories: Set<String> = [
         "bios", "cache", "saves", "savestates", "memcards", "covers", "thumbnails", "__macosx"
     ]
     private static let imageExtensions: Set<String> = ["png", "jpg", "jpeg", "webp"]
@@ -89,25 +165,27 @@ enum CatalogScanner {
         return matches[0].coverURL
     }
 
-    private struct Inventory {
+    struct Inventory: Codable, Sendable {
         let result: CatalogScanResult
         let members: [String: Set<String>]
+        let reliable: Bool
 
-        init(games: [CatalogGame] = [], warning: String?, members: [String: Set<String>] = [:]) {
+        init(games: [CatalogGame] = [], warning: String?, members: [String: Set<String>] = [:], reliable: Bool = true) {
             result = CatalogScanResult(games: games, warning: warning)
             self.members = members
+            self.reliable = reliable
         }
     }
 
-    private static func inventory(_ source: CatalogSource) -> Inventory {
+    static func inventory(_ source: CatalogSource) -> Inventory {
         let fm = FileManager.default
         let root = source.root.standardizedFileURL.resolvingSymlinksInPath()
         var isDirectory: ObjCBool = false
         guard fm.fileExists(atPath: root.path, isDirectory: &isDirectory), isDirectory.boolValue else {
-            return Inventory(warning: "SSD desconectado ou pasta de jogos indisponível.")
+            return Inventory(warning: "SSD desconectado ou pasta de jogos indisponível.", reliable: false)
         }
         guard fm.isReadableFile(atPath: root.path) else {
-            return Inventory(warning: "Não foi possível ler a pasta de jogos.")
+            return Inventory(warning: "Não foi possível ler a pasta de jogos.", reliable: false)
         }
         let supported: Set<String> = source.consoleKey == "ps1"
             ? ["cue", "ccd", "chd", "iso", "pbp", "img", "bin", "m3u"]
@@ -117,11 +195,15 @@ enum CatalogScanner {
         guard let enumerator = fm.enumerator(at: root, includingPropertiesForKeys: keys,
                                              options: [.skipsHiddenFiles, .skipsPackageDescendants],
                                              errorHandler: { _, _ in unreadable = true; return true }) else {
-            return Inventory(warning: "Não foi possível listar a pasta de jogos.")
+            return Inventory(warning: "Não foi possível listar a pasta de jogos.", reliable: false)
         }
         var files: [URL] = []
         for case let url as URL in enumerator {
-            guard let values = try? url.resourceValues(forKeys: Set(keys)), values.isSymbolicLink != true else {
+            guard let values = try? url.resourceValues(forKeys: Set(keys)) else {
+                unreadable = true
+                enumerator.skipDescendants(); continue
+            }
+            guard values.isSymbolicLink != true else {
                 enumerator.skipDescendants(); continue
             }
             if values.isDirectory == true {
@@ -204,7 +286,8 @@ enum CatalogScanner {
         var warnings: [String] = []
         if invalidDescriptors > 0 { warnings.append("\(invalidDescriptors) CUE/CCD/lista(s) incompleto(s) não incluído(s).") }
         if unreadable { warnings.append("Alguns arquivos não puderam ser lidos.") }
-        return Inventory(games: games, warning: warnings.isEmpty ? nil : warnings.joined(separator: " "), members: members)
+        return Inventory(games: games, warning: warnings.isEmpty ? nil : warnings.joined(separator: " "), members: members,
+                         reliable: !unreadable)
     }
 
     private static func isBIOS(_ file: URL) -> Bool {

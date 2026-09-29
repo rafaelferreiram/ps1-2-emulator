@@ -1,9 +1,10 @@
-PS1/2 — versão 4.2
+PS1/2 — versão 4.7
 
 Interface inspirada no menu do PlayStation 2. Fundo vetorial próprio.
 Os GIFs de abertura dos consoles são incluídos localmente, sem áudio.
-Os mesmos GIFs são reutilizados em loop na prévia ao passar o mouse,
-sem abrir o emulador; com redução de movimento, a prévia é estática.
+Os mesmos GIFs são reutilizados em loop na prévia do console pré-selecionado
+por mouse, teclado ou controle, sem abrir o emulador; com redução de movimento,
+a prévia é estática. Tirar o mouse do cartão mantém a prévia selecionada.
 Não há arquivos de BIOS no inicializador.
 Referência de navegação: manual oficial Sony, páginas 31–32:
 https://www.playstation.com/content/dam/global_pdc/en/corporate/support/manuals/ps2-docs/scph-90004/SCPH-90002CB_90003CB_PS2_UG_EN.pdf

@@ -6,5 +6,6 @@ xcrun swiftc -O -parse-as-library -target arm64-apple-macosx14.0 \
   -framework AppKit -framework SwiftUI -framework ImageIO \
   -module-cache-path "$launcher_source/cache" \
   "$launcher_source/GameCatalog.swift" "$launcher_source/NowPlayingGameView.swift" \
+  "$launcher_source/CatalogCache.swift" "$launcher_source/CoverImageCache.swift" \
   "$launcher_source/tests/NowPlayingLayoutTests.swift" -o "$test_stage/NowPlayingLayoutTests"
 "$test_stage/NowPlayingLayoutTests"

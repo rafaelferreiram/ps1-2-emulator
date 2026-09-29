@@ -1,38 +1,42 @@
 import AppKit
 import SwiftUI
-import ImageIO
 
 @MainActor
 final class NowPlayingArtwork: ObservableObject {
     @Published private(set) var image: NSImage?
+    private let catalogCache: CatalogCache
+    private let coverCache: CoverImageCache
+    private var requestID = UUID()
+
+    init(catalogCache: CatalogCache = .shared, coverCache: CoverImageCache = .shared) {
+        self.catalogCache = catalogCache
+        self.coverCache = coverCache
+    }
 
     func load(path: String, source: CatalogSource?) async {
+        let request = UUID()
+        requestID = request
         image = nil
-        guard let source else { return }
-        let thumbnail = await Task.detached(priority: .utility) {
-            guard let url = CatalogScanner.coverForLoadedGame(path: path, source: source),
-                  let artwork = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil as CGImage? }
-            return CGImageSourceCreateThumbnailAtIndex(artwork, 0, [
-                kCGImageSourceCreateThumbnailFromImageAlways: true,
-                kCGImageSourceThumbnailMaxPixelSize: 108,
-                kCGImageSourceCreateThumbnailWithTransform: true
-            ] as CFDictionary)
-        }.value
+        guard let source, !Task.isCancelled,
+              let cover = await catalogCache.cachedArtworkForLoadedGame(path: path, source: source),
+              requestID == request, !Task.isCancelled else { return }
+        let thumbnail = await coverCache.image(at: cover.url, maxPixelSize: 108, snapshotID: cover.snapshotID)
         // A late lookup must not put the previous game's cover back on screen.
-        guard !Task.isCancelled, let thumbnail else { return }
+        guard requestID == request, !Task.isCancelled, let thumbnail else { return }
         image = NSImage(cgImage: thumbnail, size: NSSize(width: thumbnail.width, height: thumbnail.height))
     }
 }
 
 /// Resolve only a verified loaded disc, independently of the catalog selection.
-/// The task runs once per game change, never once per uptime tick.
+/// The task runs on game/catalog revision changes, never once per uptime tick.
 struct NowPlayingGameView: View {
     let consoleKey: String
     let title: String
     let gamePath: String
+    var revision: Int = 0
     @StateObject private var artwork = NowPlayingArtwork()
 
-    private var identity: String { consoleKey + ":" + gamePath }
+    private var identity: String { consoleKey + ":" + gamePath + ":" + String(revision) }
 
     var body: some View {
         NowPlayingGameLabel(consoleKey: consoleKey, title: title, image: artwork.image)

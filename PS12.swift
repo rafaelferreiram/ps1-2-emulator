@@ -37,13 +37,12 @@ enum Theme {
 
 @MainActor
 final class LauncherModel: ObservableObject {
-    @Published var libraryAvailable = false
     @Published var storageMounted = false
     @Published var selected: Console = .ps2
-    @Published private(set) var hoveredConsole: Console?
     @Published var launching: Console?
     @Published var notice = ""
     @Published var errorMessage: String?
+    @Published var storageNotice: StorageNotice?
     @Published var booting = true
     @Published var isForeground = true
     @Published var fullscreen = false
@@ -58,10 +57,11 @@ final class LauncherModel: ObservableObject {
     @Published var launchGameTitle: String?
     @Published var openingText = ""
     @Published var waitingForRestart = false
-    let catalog = GameCatalog()
+    let catalog: GameCatalog
     let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
     var toggleFullscreen: (() -> Void)?
     private var timer: Timer?
+    private let storageProbe: () -> Bool
     private let monitor = EmulatorMonitor()
     private var launchURL: URL?
     private var launchGameURL: URL?
@@ -69,8 +69,15 @@ final class LauncherModel: ObservableObject {
     private var stopDeadlines: [Console: Date] = [:]
     let startedAt = Date()
 
-    init() {
+    init(catalog: GameCatalog? = nil, storageProbe: @escaping () -> Bool = {
+        FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: nil, options: [])?
+            .contains { $0.standardizedFileURL.path == "/Volumes/Extreme SSD" } ?? false
+    }, startServices: Bool = true) {
+        self.catalog = catalog ?? GameCatalog()
+        self.storageProbe = storageProbe
         refreshStorage()
+        guard startServices else { return }
+        self.catalog.restoreSavedCatalogs()
         refreshSessions()
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in
@@ -103,40 +110,31 @@ final class LauncherModel: ObservableObject {
         return String(format: "%02d:%02d:%02d", seconds / 3600, seconds / 60 % 60, seconds % 60)
     }
     func refreshStorage() {
-        let mounted = FileManager.default.fileExists(atPath: "/Volumes/Extreme SSD")
-        let available = Console.allCases.allSatisfy {
-            var directory: ObjCBool = false
-            return FileManager.default.fileExists(atPath: $0.folder.path, isDirectory: &directory) && directory.boolValue
-        }
+        // Read only the mounted-volume list, not game folders or descriptors.
+        // An unplugged SSD does not erase the last complete catalog snapshot.
+        let mounted = storageProbe()
         if storageMounted != mounted { storageMounted = mounted }
-        if libraryAvailable != available { libraryAvailable = available }
     }
     func finishBoot() {
         guard booting else { return }
         withAnimation(.easeOut(duration: reduceMotion ? 0 : 0.65)) { booting = false }
     }
     func select(_ console: Console) {
-        guard launching == nil, !booting, errorMessage == nil else { return }
+        guard launching == nil, !booting, errorMessage == nil, storageNotice == nil else { return }
         withAnimation(.easeOut(duration: reduceMotion ? 0 : 0.2)) { selected = console }
     }
     var previewConsole: Console? {
-        guard !booting, isForeground, launching == nil, catalogConsole == nil, errorMessage == nil else { return nil }
-        return hoveredConsole
+        guard !booting, isForeground, launching == nil, catalogConsole == nil, errorMessage == nil, storageNotice == nil else { return nil }
+        return selected
     }
     func setConsoleHover(_ console: Console, inside: Bool) {
-        if inside {
-            guard !booting, isForeground, launching == nil, catalogConsole == nil, errorMessage == nil else { return }
-            hoveredConsole = console
-            select(console)
-        } else if hoveredConsole == console {
-            hoveredConsole = nil
-        }
+        guard inside, !booting, isForeground, launching == nil,
+              catalogConsole == nil, errorMessage == nil, storageNotice == nil else { return }
+        select(console)
     }
-    func clearConsoleHover() { hoveredConsole = nil }
     func move(_ direction: Int) {
-        guard errorMessage == nil, NSApp.modalWindow == nil else { return }
+        guard errorMessage == nil, storageNotice == nil, NSApp.modalWindow == nil else { return }
         guard !booting, launching == nil else { finishBoot(); return }
-        clearConsoleHover()
         if catalogConsole != nil { moveGame(direction); return }
         select(selected == .ps1 ? .ps2 : .ps1)
     }
@@ -149,25 +147,26 @@ final class LauncherModel: ObservableObject {
         return listedGames.first { $0.id == gameSelection[console.rawValue] } ?? listedGames.first
     }
     func selectGame(_ game: CatalogGame) {
-        guard launching == nil, game.consoleKey == catalogConsole?.rawValue else { return }
+        guard launching == nil, storageNotice == nil, game.consoleKey == catalogConsole?.rawValue else { return }
         gameSelection[game.consoleKey] = game.id
     }
     private func moveGame(_ delta: Int) {
-        guard launching == nil, errorMessage == nil, NSApp.modalWindow == nil,
+        guard launching == nil, errorMessage == nil, storageNotice == nil, NSApp.modalWindow == nil,
               let current = selectedGame, let index = listedGames.firstIndex(where: { $0.id == current.id }) else { return }
         let next = min(max(0, index + delta), listedGames.count - 1)
         selectGame(listedGames[next])
     }
     func showCatalog() {
-        guard launching == nil, errorMessage == nil, NSApp.modalWindow == nil else { return }
-        clearConsoleHover()
+        guard launching == nil, errorMessage == nil, storageNotice == nil, NSApp.modalWindow == nil else { return }
         finishBoot()
+        let forceRefresh = catalogConsole != nil
         let console = catalogConsole ?? selected
         catalogConsole = console
-        catalog.refresh(console.rawValue)
+        catalog.refresh(console.rawValue, force: forceRefresh)
     }
     func confirm() {
         guard errorMessage == nil, NSApp.modalWindow == nil else { return }
+        if storageNotice != nil { dismissStorageNotice(); return }
         if booting { finishBoot() }
         else if let console = catalogConsole {
             if !catalog.loading.contains(console.rawValue), let game = selectedGame { launchGame(game) }
@@ -176,14 +175,14 @@ final class LauncherModel: ObservableObject {
     }
     func back() {
         guard errorMessage == nil, NSApp.modalWindow == nil else { return }
+        if storageNotice != nil { dismissStorageNotice(); return }
         if booting { finishBoot() }
         else if launching != nil { cancelLaunch() }
         else if catalogConsole != nil { catalogConsole = nil }
         else if fullscreen { toggleFullscreen?() }
     }
     func launch(_ console: Console) {
-        guard launching == nil, !booting, errorMessage == nil, !stopping.contains(console) else { return }
-        clearConsoleHover()
+        guard launching == nil, !booting, errorMessage == nil, storageNotice == nil, !stopping.contains(console) else { return }
         select(console)
         guard let url = console.applicationURL else {
             errorMessage = "Não encontrei o \(console.emulator). Coloque o aplicativo na pasta Aplicativos e tente novamente."
@@ -201,6 +200,10 @@ final class LauncherModel: ObservableObject {
     func cancelLaunch() {
         guard launching != nil, !isOpening || waitingForRestart else { return }
         let exitRequested = waitingForRestart
+        clearLaunchState()
+        notice = exitRequested ? "Abertura cancelada; a saída do DuckStation já foi solicitada." : "Abertura cancelada."
+    }
+    private func clearLaunchState() {
         launching = nil
         launchID = nil
         launchURL = nil
@@ -209,15 +212,28 @@ final class LauncherModel: ObservableObject {
         restartDuckStation = nil
         waitingForRestart = false
         isOpening = false
-        notice = exitRequested ? "Abertura cancelada; a saída do DuckStation já foi solicitada." : "Abertura cancelada."
+    }
+    func dismissStorageNotice() {
+        storageNotice = nil
+        refreshStorage()
+        // Reconnecting never starts a game automatically; the user confirms again.
+    }
+    private func checkGameAccess(_ file: URL, title: String, console: Console) -> Bool {
+        refreshStorage()
+        guard storageMounted else {
+            storageNotice = StorageNotice(gameTitle: title, consoleName: console.badge)
+            return false
+        }
+        guard GameLaunchCheck.isAvailable(file, library: console.folder) else {
+            errorMessage = "Não foi possível acessar \(title). Verifique os arquivos e as permissões do jogo no Extreme SSD. Use △ ou T para atualizar o catálogo se o jogo foi movido ou removido."
+            return false
+        }
+        return true
     }
     func launchGame(_ game: CatalogGame) {
         guard let console = Console(rawValue: game.consoleKey), launching == nil, !booting,
-              errorMessage == nil, !stopping.contains(console), NSApp.modalWindow == nil else { return }
-        guard FileManager.default.isReadableFile(atPath: game.fileURL.path) else {
-            errorMessage = "Não foi possível ler \(game.title). Conecte o Extreme SSD e atualize o catálogo com △ ou T."
-            return
-        }
+              errorMessage == nil, storageNotice == nil, !stopping.contains(console), NSApp.modalWindow == nil else { return }
+        guard checkGameAccess(game.fileURL, title: game.title, console: console) else { return }
         refreshSessions()
         let current = state(console)
         if current.isRunning && sameLoadedGame(game, path: current.gamePath) {
@@ -264,9 +280,8 @@ final class LauncherModel: ObservableObject {
         guard launchID == id, let console = launching, let url = launchURL, !isOpening else { return }
         refreshSessions()
         if let gameURL = launchGameURL {
-            guard FileManager.default.isReadableFile(atPath: gameURL.path), canOpenGame(console) else {
+            guard checkGameAccess(gameURL, title: launchGameTitle ?? gameURL.deletingPathExtension().lastPathComponent, console: console), canOpenGame(console) else {
                 cancelLaunch()
-                if errorMessage == nil { errorMessage = "O jogo ficou indisponível. Verifique o SSD e atualize o catálogo." }
                 return
             }
         }
@@ -309,9 +324,10 @@ final class LauncherModel: ObservableObject {
         guard launchID == id else { return }
         waitingForRestart = false
         openingText = "Abrindo \(console.emulator)…"
-        if let gameURL = launchGameURL, !FileManager.default.isReadableFile(atPath: gameURL.path) {
-            finishLaunch(id, console: console, app: nil, error: nil)
-            errorMessage = "O arquivo do jogo não está mais disponível. Verifique o SSD."
+        if let gameURL = launchGameURL,
+           !checkGameAccess(gameURL, title: launchGameTitle ?? gameURL.deletingPathExtension().lastPathComponent, console: console) {
+            clearLaunchState()
+            notice = ""
             return
         }
         if launchGameURL != nil {
@@ -346,14 +362,7 @@ final class LauncherModel: ObservableObject {
     private func finishLaunch(_ id: UUID, console: Console, app: NSRunningApplication?, error: Error?) {
         guard launchID == id else { return }
         let title = launchGameTitle
-        launching = nil
-        launchID = nil
-        launchURL = nil
-        launchGameURL = nil
-        launchGameTitle = nil
-        restartDuckStation = nil
-        waitingForRestart = false
-        isOpening = false
+        clearLaunchState()
         refreshSessions()
         if let error {
             notice = ""
@@ -366,7 +375,7 @@ final class LauncherModel: ObservableObject {
         }
     }
     func requestStop(_ console: Console) {
-        guard launching == nil, !stopping.contains(console), NSApp.modalWindow == nil else { return }
+        guard launching == nil, storageNotice == nil, !stopping.contains(console), NSApp.modalWindow == nil else { return }
         refreshSessions()
         guard let pid = state(console).pid else { return }
         let alert = NSAlert()
@@ -390,8 +399,8 @@ final class LauncherModel: ObservableObject {
         refreshSessions()
     }
     var storageText: String {
-        if libraryAvailable { return notice.isEmpty ? "Extreme SSD  ·  Bibliotecas disponíveis" : notice }
-        return storageMounted ? "Extreme SSD  ·  Verifique as pastas de jogos" : "Conecte o Extreme SSD para acessar os jogos"
+        if storageMounted { return notice.isEmpty ? "Extreme SSD  ·  Conectado" : notice }
+        return "SSD desconectado · Catálogo salvo disponível · Conecte para jogar"
     }
 }
 
@@ -463,6 +472,13 @@ struct SystemScene: View {
 struct ConsoleOption: View {
     let console: Console
     @ObservedObject var model: LauncherModel
+    @ObservedObject private var catalog: GameCatalog
+
+    init(console: Console, model: LauncherModel) {
+        self.console = console
+        self.model = model
+        _catalog = ObservedObject(wrappedValue: model.catalog)
+    }
     var selected: Bool { model.selected == console }
     var session: EmulatorState { model.state(console) }
     var body: some View {
@@ -505,7 +521,8 @@ struct ConsoleOption: View {
                     }
                 }.foregroundStyle(session.isRunning ? Theme.ice : Theme.pale.opacity(0.6))
                 if session.isRunning, let title = session.gameTitle, let path = session.gamePath {
-                    NowPlayingGameView(consoleKey: console.rawValue, title: title, gamePath: path)
+                    NowPlayingGameView(consoleKey: console.rawValue, title: title, gamePath: path,
+                                       revision: catalog.revisions[console.rawValue] ?? 0)
                         .id(path)
                 } else {
                     Text(session.isRunning ? session.activityDescription : "Pronto para iniciar")
@@ -533,7 +550,7 @@ struct ConsoleOption: View {
     }
 }
 
-struct ConsoleHoverPreview: View {
+struct ConsolePreview: View {
     let console: Console
     let reducedMotion: Bool
 
@@ -565,26 +582,25 @@ struct SystemMenu: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("PS1/2").font(.system(size: 27, weight: .light, design: .rounded)).tracking(3)
                         .foregroundStyle(Theme.ice).shadow(color: Theme.blue.opacity(0.7), radius: 12)
-                    Text("SISTEMA DE ENTRETENIMENTO").font(.system(size: 9, weight: .medium)).tracking(1.5)
+                    Text("Playstation Retro Emulator").font(.system(size: 9, weight: .medium)).tracking(1.5)
                         .foregroundStyle(Theme.pale.opacity(0.6))
                 }
                 Spacer()
                 TimelineView(.periodic(from: .now, by: 30)) { time in
                     VStack(alignment: .trailing, spacing: 5) {
                         Text(time.date, format: .dateTime.hour().minute()).font(.system(size: 16, weight: .regular, design: .monospaced))
-                        Text("MENU PRINCIPAL").font(.system(size: 9, weight: .medium)).tracking(1.5)
                     }
                 }.foregroundStyle(Theme.pale.opacity(0.68))
             }.padding(.top, 42)
             HStack(spacing: 0) {
                 ZStack {
                     if let console = model.previewConsole {
-                        ConsoleHoverPreview(console: console, reducedMotion: model.reduceMotion)
+                        ConsolePreview(console: console, reducedMotion: model.reduceMotion)
                             .id(console)
                     }
                 }.frame(width: 440, height: 342)
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("Navegador").font(.system(size: 32, weight: .light, design: .rounded))
+                    Text("Emulador").font(.system(size: 32, weight: .light, design: .rounded))
                         .foregroundStyle(Theme.pale).shadow(color: Theme.blue.opacity(0.25), radius: 9).padding(.bottom, 9)
                     Text("Selecione um console · acompanhe sua sessão").font(.system(size: 12)).tracking(0.6)
                         .foregroundStyle(Theme.pale.opacity(0.62)).padding(.bottom, 18)
@@ -608,7 +624,7 @@ struct SystemMenu: View {
                     }.foregroundStyle(Theme.pale.opacity(0.52))
                 }.buttonStyle(.plain)
                 HStack(spacing: 7) {
-                    Circle().fill(model.libraryAvailable ? Theme.ice.opacity(0.8) : Color.orange).frame(width: 4, height: 4)
+                    Circle().fill(model.storageMounted ? Theme.ice.opacity(0.8) : Color.orange).frame(width: 4, height: 4)
                     Text(model.storageText).font(.system(size: 10)).tracking(0.2)
                     Spacer()
                     if let name = model.controllerName {
@@ -635,7 +651,7 @@ struct BootOverlay: View {
             Spacer()
             Text("PS1/2").font(.system(size: 62, weight: .ultraLight, design: .rounded)).tracking(11)
                 .foregroundStyle(.white).shadow(color: Theme.blue, radius: 28)
-            Text("SISTEMA DE ENTRETENIMENTO").font(.system(size: 10, weight: .light)).tracking(4)
+            Text("Playstation Retro Emulator").font(.system(size: 10, weight: .light)).tracking(4)
                 .foregroundStyle(Theme.ice.opacity(0.7))
             Spacer()
             Button("Enter ou clique para continuar") { model.finishBoot() }
@@ -659,7 +675,9 @@ struct LauncherView: View {
                         GameCatalogView(console: console, model: model, catalog: model.catalog).transition(.opacity)
                     } else { SystemMenu(model: model).transition(.opacity) }
                 }.frame(width: 1100, height: 700).scaleEffect(scale)
-                    .accessibilityHidden(model.launching != nil).allowsHitTesting(model.launching == nil)
+                    .accessibilityHidden(model.launching != nil || model.storageNotice != nil)
+                    .allowsHitTesting(model.launching == nil && model.storageNotice == nil)
+                    .disabled(model.storageNotice != nil)
                 if let console = model.launching, let id = model.launchID {
                     Color.black.ignoresSafeArea()
                     VStack(spacing: 18) {
@@ -683,6 +701,11 @@ struct LauncherView: View {
                         }
                     }.padding(35).frame(maxWidth: 1000, maxHeight: .infinity)
                 }
+                if let notice = model.storageNotice {
+                    StorageNoticeView(notice: notice, onDismiss: model.dismissStorageNotice)
+                        .frame(width: 1100, height: 700).scaleEffect(scale)
+                        .zIndex(10)
+                }
             }.frame(width: geometry.size.width, height: geometry.size.height)
         }
         .preferredColorScheme(.dark)
@@ -699,7 +722,9 @@ final class LauncherWindow: NSWindow {
     override var canBecomeMain: Bool { true }
 }
 
+#if !LAUNCHER_MODEL_TESTS
 @main
+#endif
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var window: NSWindow!
@@ -759,6 +784,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func handleKey(_ event: NSEvent) -> NSEvent? {
         guard NSApp.isActive, NSApp.keyWindow === window, NSApp.modalWindow == nil, model.errorMessage == nil else { return event }
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if model.storageNotice != nil {
+            // Keep system shortcuts and Tab navigation, but no console/game
+            // shortcuts may act through the storage dialog.
+            if modifiers.contains(.command) { return event }
+            if event.keyCode == 53 { model.back(); return nil }
+            if [36, 76].contains(event.keyCode), !event.isARepeat { model.confirm(); return nil }
+            return event.keyCode == 48 ? event : nil
+        }
         if modifiers.contains(.command) {
             if event.charactersIgnoringModifiers == "1" { model.finishBoot(); model.launch(.ps1); return nil }
             if event.charactersIgnoringModifiers == "2" { model.finishBoot(); model.launch(.ps2); return nil }
@@ -786,17 +819,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func updateActivity() {
         model.isForeground = NSApp.isActive && window?.isVisible == true && window?.isMiniaturized == false
             && window?.occlusionState.contains(.visible) == true
-        if !model.isForeground { model.clearConsoleHover() }
         NSApp.presentationOptions = model.fullscreen && model.isForeground ? [.autoHideDock, .autoHideMenuBar] : []
     }
-    func applicationDidBecomeActive(_ notification: Notification) { updateActivity() }
+    func applicationDidBecomeActive(_ notification: Notification) {
+        updateActivity()
+    }
     func applicationDidResignActive(_ notification: Notification) { updateActivity() }
     func windowDidBecomeKey(_ notification: Notification) { updateActivity() }
     func windowDidResignKey(_ notification: Notification) { updateActivity() }
     func windowDidChangeOcclusionState(_ notification: Notification) { updateActivity() }
     func windowWillClose(_ notification: Notification) {
         model.cancelLaunch()
-        model.clearConsoleHover()
         model.isForeground = false
         NSApp.presentationOptions = []
     }
@@ -827,6 +860,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.standardWindowButton(.zoomButton)?.action = #selector(toggleFullscreen)
     }
     @objc private func toggleFullscreen() {
+        guard model.storageNotice == nil else { return }
         if model.fullscreen {
             model.fullscreen = false
             NSApp.presentationOptions = []
@@ -848,7 +882,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func showAbout() {
         let alert = NSAlert()
         alert.messageText = "PS1/2"
-        alert.informativeText = "Versão 4.3 · Interface inspirada no PlayStation 2\n\nPasse o mouse sobre PS1 ou PS2 para ver sua prévia animada, sem abrir o emulador. Catálogo com capas frontais, miniatura do jogo carregado no menu, abertura direta de jogos, status e tempo ligado.\n\nUse setas para selecionar, Enter para confirmar, T / △ para listar jogos, F / □ para tela cheia e Esc / ○ para voltar.\n\nLogo: fornecido pelo usuário.\nFotos: Evan-Amos / Wikimedia — domínio público.\nGIFs: Tenor; créditos completos no pacote do app.\n\nInicializador pessoal para DuckStation e PCSX2, sem vínculo oficial com a Sony."
+        alert.informativeText = "Versão 4.7 · Interface inspirada no PlayStation 2\n\nO console pré-selecionado mostra sua prévia animada em loop, por mouse, teclado ou controle, sem abrir o emulador. Catálogos salvos de PS1 e PS2 são restaurados ao iniciar, mesmo sem o SSD. Ao tentar jogar sem ele, um aviso de armazenamento pede a conexão. Reconectar não inicia jogos automaticamente.\n\nUse setas para selecionar, Enter para confirmar, T / △ para listar jogos ou realizar uma nova carga completa, F / □ para tela cheia e Esc / ○ para voltar.\n\nLogo: fornecido pelo usuário.\nFotos: Evan-Amos / Wikimedia — domínio público.\nGIFs: Tenor; créditos completos no pacote do app.\n\nInicializador pessoal para DuckStation e PCSX2, sem vínculo oficial com a Sony."
         alert.icon = Theme.images["Logo"]
         alert.addButton(withTitle: "OK")
         alert.runModal()
