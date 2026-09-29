@@ -1,10 +1,97 @@
-# PS1/2 Emulator
+<p align="center">
+  <img src="docs/images/icon.png" width="112" alt="Ícone do PS1/2">
+</p>
 
-Central pessoal de jogos para macOS, feita em **SwiftUI + AppKit**, com visual inspirado no menu do PlayStation 2.
+<h1 align="center">PS1/2</h1>
 
-**Este projeto é um inicializador, não um emulador.** Ele abre o [DuckStation](https://www.duckstation.org/) para PS1 e o [PCSX2](https://pcsx2.net/) para PS2. O instalador deste repositório compila a central e baixa os emuladores oficiais que estiverem faltando; a configuração inicial de cada emulador continua sendo manual. Jogos, BIOS e saves não estão incluídos.
+<p align="center">
+  A central de PlayStation 1 e PlayStation 2 no Mac.<br>
+  Um menu no estilo do console para abrir seus jogos no DuckStation e no PCSX2.
+</p>
 
-O repositório chama-se `ps1-2-emulator`; o aplicativo se chama **PS1/2**. O bundle usa `PS1-2.app`, pois `/` é separador de pastas no macOS. Versão atual: **4.10, build 19**.
+<p align="center">
+  <a href="#baixar-e-instalar"><strong>Baixar e instalar</strong></a>
+  &nbsp;·&nbsp;
+  <a href="#uma-amostra">Ver o app</a>
+  &nbsp;·&nbsp;
+  <a href="#guia-completo">Guia completo</a>
+</p>
+
+<p align="center"><strong>Versão 4.10</strong> · Mac Apple Silicon · macOS 14 ou posterior</p>
+
+<p align="center">
+  <img src="docs/images/menu.png" width="920" alt="Menu principal: PlayStation 2 selecionado, com prévia, controles e DualSense">
+</p>
+
+O **PS1/2** é o aplicativo que você abre no dia a dia. Ele mostra os dois consoles, a prévia, o catálogo com capas e o atalho para jogar. Quem executa o jogo é o [DuckStation](https://www.duckstation.org/) (PS1) e o [PCSX2](https://pcsx2.net/) (PS2). O instalador coloca a central em Aplicativos e baixa esses emuladores oficiais se ainda não estiverem no Mac.
+
+Você traz os jogos e as BIOS. Eles ficam na pasta que você escolher, no Mac ou num disco externo.
+
+## Uma amostra
+
+O menu acima é a tela inicial. PlayStation 2 está selecionado, a prévia roda sem abrir o emulador, e a faixa de baixo mostra teclado e controle. Com um DualSense, o botão **PlayStation** volta para esta tela mesmo com o jogo na frente.
+
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <img src="docs/images/catalog.png" alt="Catálogo de Jogos PS2 com FIFA Street 2, Need for Speed Underground 2 e Surf's Up">
+    </td>
+    <td width="50%" align="center">
+      <img src="docs/images/folders.png" alt="Painel Pastas de jogos, com uma pasta para PS1 e outra para PS2">
+    </td>
+  </tr>
+  <tr>
+    <td align="center"><strong>Catálogo</strong><br>Capas, nome do jogo e <em>Abrir no PCSX2</em>. Mouse, teclado ou controle.</td>
+    <td align="center"><strong>Pastas de jogos</strong><br>Uma pasta por console. Pode ser no Mac ou no disco externo.</td>
+  </tr>
+</table>
+
+As três capas são uma amostra incluída no projeto, para o catálogo aparecer assim. Os jogos em si continuam sendo os seus.
+
+## Baixar e instalar
+
+Repositório privado: a conta do GitHub precisa ter acesso. Em um Mac Apple Silicon com macOS 14 ou posterior:
+
+```bash
+git clone https://github.com/rafaelferreiram/ps1-2-emulator.git
+cd ps1-2-emulator
+bash install.sh
+open /Applications/PS1-2.app
+```
+
+Sem Git: no GitHub, **Code → Download ZIP**, extraia e dê duplo clique em **Instalar.command**.
+
+O script pede confirmação, instala a central e completa DuckStation e PCSX2 só se faltarem. Sem Homebrew e sem `sudo`.
+
+1. Abra cada emulador uma vez, informe suas BIOS e teste um jogo nele.
+2. Na central, abra **Pastas de jogos** e aponte a pasta de PS1 e a de PS2.
+3. Escolha o console e pressione **T** ou **△** para ver os jogos.
+
+Se o Mac pedir as ferramentas de compilação, execute `xcode-select --install` e rode o instalador de novo. O passo a passo, as opções e o que fazer sem permissão em `/Applications` estão no [guia completo](#guia-completo).
+
+## Em resumo
+
+- Menu PS1 e PS2, com prévia animada que não inicia o emulador.
+- Catálogo com capas, no mouse, no teclado ou no controle.
+- Pasta independente para cada console, no Mac ou num disco externo.
+- A janela acompanha a tela: no MacBook e em outro monitor, maximizar ocupa a área disponível.
+- O botão **PlayStation** do DualSense volta ao menu dos consoles e deixa DuckStation e PCSX2 abertos.
+- O ícone do Dock continua sendo o logo atual depois de encerrar o app.
+
+| Ação | Teclado | Controle |
+|---|---|---|
+| Escolher console ou jogo | Setas | Direcional ou analógico esquerdo |
+| Confirmar | Enter | X |
+| Voltar | Esc | Círculo |
+| Tela cheia | F | Quadrado |
+| Ver ou atualizar os jogos | T | Triângulo |
+| Voltar ao menu da central | — | Botão PlayStation do DualSense |
+
+---
+
+## Guia completo
+
+O repositório chama-se `ps1-2-emulator`. O aplicativo se chama **PS1/2** e o arquivo instalado é `PS1-2.app`, porque `/` é separador de pastas no macOS. Versão atual: **4.10, build 19**.
 
 ## Começar aqui: clonar, instalar e abrir
 
