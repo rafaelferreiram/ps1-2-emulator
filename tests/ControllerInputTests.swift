@@ -80,6 +80,19 @@ struct ControllerInputTests {
             require(stick.sample(x: invalid, y: 1, time: 1, context: "menu", repeats: false) == nil, "invalid axis cannot navigate")
             require(stick.sample(x: 1, y: 0, time: 2, context: "menu", repeats: false) == nil, "invalid sample requires neutral recovery")
         }
+        var chord = TriggerChord()
+        require(!chord.update(left: true, right: nil), "L2 alone does not reload")
+        require(chord.update(left: nil, right: true), "adding R2 completes the chord once")
+        require(!chord.update(left: true, right: true), "holding R2+L2 does not repeat")
+        require(!chord.update(left: nil, right: false), "releasing one trigger stays disarmed")
+        require(!chord.update(left: nil, right: true), "pressing the released trigger again does not reload")
+        require(!chord.update(left: false, right: false), "releasing both rearms without firing")
+        require(chord.update(left: true, right: true), "a fresh R2+L2 reloads")
+        var held = TriggerChord()
+        held.adopt(left: true, right: true)
+        require(!held.update(left: true, right: true), "triggers already held at connection do not reload")
+        require(!held.update(left: false, right: false), "releasing the connected hold rearms")
+        require(held.update(left: true, right: true), "the next deliberate chord reloads")
         print("PASS: \(assertions) analog direction, dead-zone, repeat and lifecycle assertions")
     }
 }

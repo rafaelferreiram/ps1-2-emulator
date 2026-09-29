@@ -23,7 +23,8 @@ final class NowPlayingArtwork: ObservableObject {
         let thumbnail = await coverCache.image(at: cover.url, maxPixelSize: 108, snapshotID: cover.snapshotID)
         // A late lookup must not put the previous game's cover back on screen.
         guard requestID == request, !Task.isCancelled, let thumbnail else { return }
-        image = NSImage(cgImage: thumbnail, size: NSSize(width: thumbnail.width, height: thumbnail.height))
+        let display = CatalogScanner.displayImage(thumbnail)
+        image = NSImage(cgImage: display, size: NSSize(width: display.width, height: display.height))
     }
 }
 

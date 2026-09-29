@@ -56,7 +56,9 @@ struct GameCatalogTests {
         require(missing.games.isEmpty && missing.warning != nil, "missing SSD is explicit")
         try verifyPS2CoverSelection(temporary: temporary)
         try verifyLoadedGameCovers(temporary: temporary)
-        print("PASS: CUE validation, BIN track deduplication, hidden/archive/BIOS filtering, playlist deduplication, descriptor traversal guard, ISO/raw serial extraction, front-cover priority, PS2 portrait filtering across every fallback, unchanged PS1 artwork, missing SSD, exact loaded-game cover lookup, CUE/CCD/M3U ownership and ambiguity rejection.")
+        try verifySharedSerialCover(temporary: temporary)
+        try verifyLooseDiscAndParentCover(temporary: temporary)
+        print("PASS: CUE validation, BIN track deduplication, hidden/archive/BIOS filtering, playlist deduplication, descriptor traversal guard, ISO/raw serial extraction, front-cover priority, PS2 portrait filtering across every fallback, unchanged PS1 artwork, distinct covers for discs that reuse a serial, missing SSD, exact loaded-game cover lookup, CUE/CCD/M3U ownership and ambiguity rejection.")
         if CommandLine.arguments.contains("--installed") {
             let frontOverride: URL? = CommandLine.arguments.firstIndex(of: "--front-covers").flatMap { index in
                 guard CommandLine.arguments.indices.contains(index + 1) else { return nil }
@@ -179,6 +181,9 @@ struct GameCatalogTests {
         try art(allSpreads.deletingLastPathComponent().appendingPathComponent("Capa"), "front.png", width: 140, height: 90)
         expectedAbsent.append(allSpreads.lastPathComponent)
 
+        let caseScan = try game("JBGS_030.18.Street Fighter 30th")
+        expected[caseScan.lastPathComponent] = try art(caseScan.deletingLastPathComponent(), "Street Fighter 30th - CAPA.png", width: 150, height: 100)
+
         let squareOnly = try game("Square Only")
         try art(frontCovers, "Square Only.png", width: 90, height: 90)
         try art(emulatorCovers, "Square Only.png", width: 90, height: 90)
@@ -200,6 +205,16 @@ struct GameCatalogTests {
                                      database: database, frontCovers: frontCovers)
         let ps2 = CatalogScanner.scan(ps2Source)
         require(ps2.games.count == expected.count + expectedAbsent.count, "every portrait fixture is inventoried")
+        require(ps2.games.first { $0.fileURL == caseScan }?.title == "Street Fighter 30th",
+                "a custom four-letter serial is removed from the title")
+        let panel = CGContext(data: nil, width: 150, height: 100, bitsPerComponent: 8, bytesPerRow: 150 * 4,
+                              space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        panel.setFillColor(CGColor(red: 0, green: 0, blue: 1, alpha: 1))
+        panel.fill(CGRect(x: 0, y: 0, width: 150, height: 100))
+        panel.setFillColor(CGColor(red: 1, green: 0, blue: 0, alpha: 1))
+        panel.fill(CGRect(x: 78, y: 0, width: 72, height: 100))
+        let front = CatalogScanner.displayImage(panel.makeImage()!)
+        require(front.width == 72 && front.height == 100, "an unfolded case keeps only the front panel")
         for (fileName, image) in expected {
             require(normalizedPath(ps2.games.first { $0.fileURL.lastPathComponent == fileName }?.coverURL) == normalizedPath(image),
                     "PS2 selected expected front cover for \(fileName)")
@@ -315,6 +330,67 @@ struct GameCatalogTests {
         let sibling = siblingRoot.appendingPathComponent("Direct.iso")
         try Data("disc".utf8).write(to: sibling)
         expect(sibling, nil, "root prefix alone does not authorize a sibling directory")
+    }
+
+    static func verifySharedSerialCover(temporary: URL) throws {
+        let root = temporary.appendingPathComponent("SharedSerial", isDirectory: true)
+        let covers = temporary.appendingPathComponent("SharedCovers", isDirectory: true)
+        for directory in [root, covers] {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        }
+        let serial = "SLUS_111.11"
+        let we = root.appendingPathComponent("WE2002 Traducao.iso")
+        let modDirectory = root.appendingPathComponent("Brasileirao 2008", isDirectory: true)
+        try FileManager.default.createDirectory(at: modDirectory, withIntermediateDirectories: true)
+        let mod = modDirectory.appendingPathComponent("Brasileirao 2008.iso")
+        try makeDisc(serial: serial).write(to: we)
+        try makeDisc(serial: serial).write(to: mod)
+        let pixel = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/a1sAAAAASUVORK5CYII=")!
+        let official = covers.appendingPathComponent("SLUS-11111.png")
+        try pixel.write(to: official)
+        let own = modDirectory.appendingPathComponent("Capa.png")
+        try pixel.write(to: own)
+        let database = temporary.appendingPathComponent("SharedSerial.yaml")
+        try Data("SLUS-11111:\n  name: \"World Soccer Winning Eleven 2002\"\n".utf8).write(to: database)
+        let scanned = CatalogScanner.scan(CatalogSource(consoleKey: "ps1", root: root, covers: covers, database: database))
+        let weGame = scanned.games.first { $0.fileURL == we }
+        let modGame = scanned.games.first { $0.fileURL == mod }
+        require(weGame?.coverURL?.resolvingSymlinksInPath().path == official.resolvingSymlinksInPath().path,
+                "the disc closest to the official name keeps the serial cover")
+        require(modGame?.coverURL?.resolvingSymlinksInPath().path == own.resolvingSymlinksInPath().path,
+                "a different game that reuses the serial keeps its own cover")
+    }
+
+    static func verifyLooseDiscAndParentCover(temporary: URL) throws {
+        let root = temporary.appendingPathComponent("LooseDiscs", isDirectory: true)
+        let covers = temporary.appendingPathComponent("LooseCovers", isDirectory: true)
+        for directory in [root, covers] {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        }
+        let ninja = root.appendingPathComponent("Ninja", isDirectory: true)
+        try FileManager.default.createDirectory(at: ninja, withIntermediateDirectories: true)
+        let first = ninja.appendingPathComponent("Ninja - Shadow of Darkness (Europe) (Track 01).bin")
+        try makeDisc(serial: "SLES_015.54", raw: true).write(to: first)
+        try Data([1]).write(to: ninja.appendingPathComponent("Ninja - Shadow of Darkness (Europe) (Track 02).bin"))
+        let art = ninja.appendingPathComponent("capa.jpeg")
+        try Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/a1sAAAAASUVORK5CYII=")!.write(to: art)
+        let pride = root.appendingPathComponent("PRIDE FC/GAME", isDirectory: true)
+        try FileManager.default.createDirectory(at: pride, withIntermediateDirectories: true)
+        let iso = pride.appendingPathComponent("PRIDE FC.iso")
+        try Data("disc".utf8).write(to: iso)
+        let parentArt = root.appendingPathComponent("PRIDE FC/pride.png")
+        try Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/a1sAAAAASUVORK5CYII=")!.write(to: parentArt)
+        try Data([1]).write(to: root.appendingPathComponent("Loose (Track 3).bin"))
+        let scanned = CatalogScanner.scan(CatalogSource(consoleKey: "ps1", root: root, covers: covers, database: nil))
+        let ninjaGame = scanned.games.first { $0.fileURL == first }
+        require(scanned.games.count == 2, "an uncued first track and a disc in GAME are games, later tracks are not")
+        require(ninjaGame?.title == "Ninja - Shadow of Darkness (Europe)", "the track suffix is removed from the title")
+        require(ninjaGame?.coverURL?.resolvingSymlinksInPath().path == art.resolvingSymlinksInPath().path,
+                "capa.jpeg beside the tracks is the cover")
+        require(scanned.games.first { $0.fileURL == iso }?.coverURL?.resolvingSymlinksInPath().path == parentArt.resolvingSymlinksInPath().path,
+                "a single image above GAME/ is that disc's cover")
+        require(scanned.games.contains { $0.fileURL.lastPathComponent == "Loose (Track 3).bin" } == false,
+                "a lone later track is still not a game")
     }
 
     static func makeDisc(serial: String, raw: Bool = false) -> Data {

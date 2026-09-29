@@ -146,6 +146,9 @@ struct LauncherPreviewTests {
             offline.catalogConsole = console
             offline.launchGame(game)
             require(offline.storageNotice == StorageNotice(gameTitle: game.title, consoleName: console.badge), "missing SSD shows the console-styled notice")
+            offline.reloadCatalog()
+            require(offline.storageNotice != nil && !offline.catalog.loading.contains(console.rawValue),
+                    "storage notice blocks catalog reload")
             require(offline.errorMessage == nil && offline.launching == nil && offline.launchID == nil, "offline play never starts an emulator or native error")
             let selected = offline.selected
             offline.select(selected == .ps1 ? .ps2 : .ps1)
@@ -231,6 +234,40 @@ struct LauncherPreviewTests {
         require(scans == 1, "only the selected console is scanned once")
         configurable.setGameFolder(library, for: .ps1)
         require(!catalog.loading.contains("ps1"), "selecting the identical folder does not rescan")
+        configurable.showLibrarySettings()
+        configurable.reloadCatalog()
+        require(configurable.showingLibrarySettings && !catalog.loading.contains("ps1"), "settings block catalog reload")
+        configurable.dismissLibrarySettings()
+        configurable.catalogConsole = nil
+        configurable.selected = .ps1
+        configurable.errorMessage = "busy"
+        configurable.reloadCatalog()
+        require(configurable.catalogConsole == nil && configurable.errorMessage == "busy", "an error blocks catalog reload")
+        configurable.errorMessage = nil
+        configurable.reloadCatalog()
+        require(configurable.catalogConsole == .ps1 && catalog.loading.contains("ps1") && configurable.launching == nil,
+                "reload scans the selected console without launching an emulator")
+        configurable.reloadCatalog()
+        for _ in 0..<500 where catalog.loading.contains("ps1") {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        require(!catalog.loading.contains("ps1"), "catalog reload finishes")
+        let reloaded = await cache.statistics().scans
+        require(reloaded == scans + 1, "a second reload during the scan does not stack another scan")
+        try Data("later".utf8).write(to: library.appendingPathComponent("Added Later.iso"))
+        configurable.back()
+        require(configurable.catalogConsole == nil, "back returns to the console menu before reopening")
+        configurable.selected = .ps1
+        configurable.showCatalog()
+        require(configurable.catalogConsole == .ps1 && catalog.loading.contains("ps1"),
+                "opening a connected library rescans instead of showing only the saved list")
+        for _ in 0..<500 where catalog.loading.contains("ps1") {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        require(catalog.games["ps1"]?.contains { $0.title == "Added Later" } == true,
+                "a PS1 game added after the last visit appears in the catalog")
+        let opened = await cache.statistics().scans
+        require(opened == reloaded + 1, "reopening a connected library scans once")
         configurable.catalogConsole = .ps1
         let staleGame = CatalogGame(id: oldPS1.path + "/Old.iso", consoleKey: "ps1", title: "Old library",
                                     fileURL: oldPS1.appendingPathComponent("Old.iso"), coverURL: nil)
@@ -242,7 +279,7 @@ struct LauncherPreviewTests {
         require(configurable.gameFolder(for: .ps1) == oldPS1 && catalog.source(for: "ps1")?.root == oldPS1,
                 "reset restores original source without requiring SSD access")
         let resetStats = await cache.statistics()
-        require(resetStats.scans == scans, "reset does not scan the disconnected default folder")
+        require(resetStats.scans == opened, "reset does not scan the disconnected default folder")
         require(configurable.launching == nil && configurable.launchID == nil, "folder integration never launches emulators")
         print("PASS: \(assertions) launcher-selection, folder integration, offline-storage dialog and on-demand file validation assertions")
     }

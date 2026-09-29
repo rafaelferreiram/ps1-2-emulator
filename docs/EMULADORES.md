@@ -91,8 +91,9 @@ Essa tabela descreve o scanner da central, não uma garantia de compatibilidade 
 
 - ZIP, RAR e 7z precisam ser extraídos antes e não aparecem como jogos.
 - CUE/CCD/M3U só entram quando seus componentes existem dentro da biblioteca.
-- Para PS1, mantenha CUE e faixas BIN juntos; use a entrada do disco/playlist, não uma faixa de áudio isolada.
+- Para PS1, mantenha CUE e faixas BIN juntos; use a entrada do disco/playlist, não uma faixa de áudio isolada. Uma pasta só com faixas BIN, sem CUE, aparece como um jogo: a faixa 1.
 - Para PS2, o PCSX2 não lê CUE/TOC diretamente: consulte o [guia oficial de discos](https://pcsx2.net/docs/setup/discs/) para os arquivos corretos de cada método de cópia.
+- Para a capa, coloque um PNG, JPG ou WebP na pasta do jogo. O nome `capa` serve, e a única imagem da pasta também. Se o disco estiver em `GAME`, a imagem pode ficar na pasta acima. **Atualizar**, **R** ou **R2 + L2** relê jogos e capas. Pastas como Futebol ou Luta, criadas no catálogo, só organizam a lista: nenhum arquivo é movido.
 
 ## Problemas comuns
 

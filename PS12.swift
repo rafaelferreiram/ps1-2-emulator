@@ -2,6 +2,16 @@ import AppKit
 import SwiftUI
 import Combine
 
+enum CatalogCommand: String, CaseIterable, Identifiable {
+    case sortAZ, sortZA, folders, minimize, reload, library
+    var id: String { rawValue }
+}
+
+enum CatalogFolderAction: String, CaseIterable, Identifiable {
+    case place, rename, delete, remove, create
+    var id: String { rawValue }
+}
+
 enum Console: String, CaseIterable, Identifiable {
     case ps1, ps2
     var id: String { rawValue }
@@ -59,16 +69,26 @@ final class LauncherModel: ObservableObject {
     @Published var catalogConsole: Console?
     @Published var catalogColumns = Theme.catalogColumns
     @Published var gameSelection: [String: String] = [:]
+    @Published var showingCatalogFolders = false
+    @Published var folderDraft = ""
+    @Published var catalogFolderIndex = 0
+    @Published var renamingFolderID: UUID?
+    @Published var catalogFolderMessage: String?
+    @Published var catalogCommand: CatalogCommand?
+    @Published var catalogFolderAction: CatalogFolderAction?
     @Published var launchGameTitle: String?
     @Published var openingText = ""
     @Published var waitingForRestart = false
     let catalog: GameCatalog
     let librarySettings: GameLibrarySettings
+    let organizer: CatalogOrganizer
     let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
     var toggleFullscreen: (() -> Void)?
     var chooseLibraryFolder: ((Console) -> Void)?
     private var timer: Timer?
     private var libraryObserver: AnyCancellable?
+    private var organizerObserver: AnyCancellable?
+    private var lastCatalogCommand: CatalogCommand = .sortAZ
     private let storageProbe: (() -> Bool)?
     private let monitor: EmulatorMonitor
     private var launchURL: URL?
@@ -78,9 +98,12 @@ final class LauncherModel: ObservableObject {
     let startedAt = Date()
 
     init(catalog: GameCatalog? = nil, librarySettings: GameLibrarySettings? = nil,
+         organizer: CatalogOrganizer? = nil,
          storageProbe: (() -> Bool)? = nil, startServices: Bool = true) {
         let settings = librarySettings ?? GameLibrarySettings()
         self.librarySettings = settings
+        let storedOrganizer = organizer ?? CatalogOrganizer()
+        self.organizer = storedOrganizer
         let sources = Dictionary(uniqueKeysWithValues: Console.allCases.compactMap { console -> (String, CatalogSource)? in
             guard let source = CatalogSource.installed(console.rawValue, root: settings.folder(for: console.rawValue)) else { return nil }
             return (console.rawValue, source)
@@ -89,6 +112,7 @@ final class LauncherModel: ObservableObject {
         self.monitor = EmulatorMonitor(libraries: sources.mapValues { $0.root.path })
         self.storageProbe = storageProbe
         libraryObserver = settings.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }
+        organizerObserver = storedOrganizer.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         refreshStorage()
         guard startServices else { return }
         self.catalog.restoreSavedCatalogs()
@@ -140,6 +164,7 @@ final class LauncherModel: ObservableObject {
     func showLibrarySettings() {
         guard launching == nil, storageNotice == nil, errorMessage == nil, NSApp.modalWindow == nil,
               !choosingLibraryFolder else { return }
+        dismissCatalogFolders()
         finishBoot()
         settingsConsole = catalogConsole ?? selected
         librarySettingsError = nil
@@ -181,7 +206,8 @@ final class LauncherModel: ObservableObject {
         withAnimation(.easeOut(duration: reduceMotion ? 0 : 0.65)) { booting = false }
     }
     func select(_ console: Console) {
-        guard launching == nil, !booting, errorMessage == nil, storageNotice == nil, !showingLibrarySettings else { return }
+        guard launching == nil, !booting, errorMessage == nil, storageNotice == nil,
+              !showingLibrarySettings, !showingCatalogFolders else { return }
         withAnimation(.easeOut(duration: reduceMotion ? 0 : 0.2)) { selected = console }
     }
     var previewConsole: Console? {
@@ -196,86 +222,392 @@ final class LauncherModel: ObservableObject {
     }
     func move(_ direction: Int) {
         guard errorMessage == nil, storageNotice == nil, NSApp.modalWindow == nil else { return }
+        if showingCatalogFolders { moveFolderActions(direction); return }
         if showingLibrarySettings {
             guard !choosingLibraryFolder else { return }
             settingsConsole = settingsConsole == .ps1 ? .ps2 : .ps1
             return
         }
         guard !booting, launching == nil else { finishBoot(); return }
-        if catalogConsole != nil { moveGame(direction); return }
+        if catalogConsole != nil { moveInsideCatalog(horizontal: direction, vertical: 0); return }
         select(selected == .ps1 ? .ps2 : .ps1)
     }
     func moveVertical(_ direction: Int) {
+        if showingCatalogFolders { moveFolderList(direction); return }
         if showingLibrarySettings { move(direction); return }
-        if catalogConsole != nil { moveGame(direction * catalogColumns) } else { move(direction) }
+        if catalogConsole != nil { moveInsideCatalog(horizontal: 0, vertical: direction) } else { move(direction) }
     }
-    var listedGames: [CatalogGame] { catalog.games[catalogConsole?.rawValue ?? ""] ?? [] }
+    var catalogSortAscending: Bool {
+        organizer.layout(for: (catalogConsole ?? selected).rawValue).ascending
+    }
+    var catalogOrganizationToken: String {
+        let key = (catalogConsole ?? selected).rawValue
+        let layout = organizer.layout(for: key)
+        let folders = layout.folders.map { "\($0.id.uuidString)#\($0.name)#\($0.gameIDs.joined(separator: ","))" }.joined(separator: "|")
+        let collapsed = layout.collapsed.sorted().joined(separator: ",")
+        let count = catalog.games[key]?.count ?? 0
+        return "\(layout.ascending)#\(folders)#\(collapsed)#\(count)"
+    }
+    func catalogSections(for console: Console) -> [CatalogSection] {
+        let stored = catalog.games[console.rawValue] ?? []
+        let entries = stored.map { CatalogEntry(id: $0.id, title: $0.title) }
+        return CatalogGrouping.sections(entries: entries, layout: organizer.layout(for: console.rawValue))
+    }
+    func catalogFolders(for console: Console) -> [CatalogFolder] {
+        organizer.layout(for: console.rawValue).folders
+    }
+    var listedGames: [CatalogGame] {
+        guard let console = catalogConsole else { return [] }
+        return resolved(CatalogGrouping.visible(catalogSections(for: console)), console: console)
+    }
     var selectedGame: CatalogGame? {
         guard let console = catalogConsole else { return nil }
-        return listedGames.first { $0.id == gameSelection[console.rawValue] } ?? listedGames.first
+        let visible = listedGames
+        if let id = gameSelection[console.rawValue], let game = visible.first(where: { $0.id == id }) { return game }
+        return visible.first
+    }
+    func alignCatalogSelection() {
+        guard let console = catalogConsole else { return }
+        let visible = listedGames
+        guard !visible.isEmpty else { return }
+        if let id = gameSelection[console.rawValue], visible.contains(where: { $0.id == id }) { return }
+        gameSelection[console.rawValue] = visible[0].id
     }
     func selectGame(_ game: CatalogGame) {
-        guard launching == nil, storageNotice == nil, !showingLibrarySettings, game.consoleKey == catalogConsole?.rawValue else { return }
+        guard launching == nil, storageNotice == nil, !showingLibrarySettings, !showingCatalogFolders,
+              game.consoleKey == catalogConsole?.rawValue else { return }
+        catalogCommand = nil
         gameSelection[game.consoleKey] = game.id
     }
-    private func moveGame(_ delta: Int) {
-        guard launching == nil, errorMessage == nil, storageNotice == nil, NSApp.modalWindow == nil,
-              let current = selectedGame, let index = listedGames.firstIndex(where: { $0.id == current.id }) else { return }
-        let next = min(max(0, index + delta), listedGames.count - 1)
-        selectGame(listedGames[next])
+    private func resolved(_ entries: [CatalogEntry], console: Console) -> [CatalogGame] {
+        let stored = catalog.games[console.rawValue] ?? []
+        let byID = Dictionary(stored.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return entries.compactMap { byID[$0.id] }
+    }
+    private func moveGame(horizontal: Int, vertical: Int) {
+        guard launching == nil, !showingCatalogFolders, !showingLibrarySettings,
+              errorMessage == nil, storageNotice == nil, NSApp.modalWindow == nil,
+              let console = catalogConsole else { return }
+        let visible = listedGames
+        guard !visible.isEmpty else { return }
+        let board = CatalogBoard(sections: catalogSections(for: console))
+        let currentID = gameSelection[console.rawValue]
+        let start = currentID.flatMap { board.contains($0) ? $0 : nil } ?? visible[0].id
+        guard let nextID = board.move(from: start, columns: max(1, catalogColumns), horizontal: horizontal, vertical: vertical),
+              let game = visible.first(where: { $0.id == nextID }) else { return }
+        selectGame(game)
+    }
+    var availableCatalogCommands: [CatalogCommand] {
+        guard let console = catalogConsole else { return [] }
+        var commands: [CatalogCommand] = [.sortAZ, .sortZA, .folders]
+        if catalogSections(for: console).contains(where: \.collapsible) { commands.append(.minimize) }
+        commands.append(contentsOf: [.reload, .library])
+        return commands
+    }
+    func focusCatalogCommands() {
+        let commands = availableCatalogCommands
+        guard !commands.isEmpty else { return }
+        if let current = catalogCommand, commands.contains(current) { return }
+        catalogCommand = commands.contains(lastCatalogCommand) ? lastCatalogCommand : commands[0]
+    }
+    private func shiftCatalogCommand(_ direction: Int) {
+        let commands = availableCatalogCommands
+        guard !commands.isEmpty else { return }
+        let current = catalogCommand.flatMap { commands.firstIndex(of: $0) } ?? 0
+        let next = commands[(current + direction + commands.count) % commands.count]
+        catalogCommand = next
+        lastCatalogCommand = next
+    }
+    private func moveInsideCatalog(horizontal: Int, vertical: Int) {
+        guard let console = catalogConsole else { return }
+        if catalogCommand != nil {
+            if horizontal != 0 { shiftCatalogCommand(horizontal) }
+            else if vertical > 0, !listedGames.isEmpty { catalogCommand = nil }
+            return
+        }
+        if listedGames.isEmpty {
+            focusCatalogCommands()
+            return
+        }
+        if vertical < 0, let id = selectedGame?.id ?? listedGames.first?.id {
+            let board = CatalogBoard(sections: catalogSections(for: console))
+            if board.move(from: id, columns: max(1, catalogColumns), horizontal: 0, vertical: -1) == nil {
+                focusCatalogCommands()
+                return
+            }
+        }
+        moveGame(horizontal: horizontal, vertical: vertical)
+    }
+    func activateCatalogCommand() {
+        guard let command = catalogCommand else { return }
+        switch command {
+        case .sortAZ: setCatalogSort(ascending: true)
+        case .sortZA: setCatalogSort(ascending: false)
+        case .folders: showCatalogFolders()
+        case .minimize: toggleSectionOfSelection()
+        case .reload: reloadCatalog()
+        case .library: showLibrarySettings()
+        }
+    }
+    func availableFolderActions() -> [CatalogFolderAction] {
+        guard let console = catalogConsole else { return [.create] }
+        let folders = catalogFolders(for: console)
+        var actions: [CatalogFolderAction] = []
+        if !folders.isEmpty { actions.append(contentsOf: [.place, .rename, .delete]) }
+        if let game = selectedGame, folders.contains(where: { $0.gameIDs.contains(game.id) }) {
+            actions.append(.remove)
+        }
+        actions.append(.create)
+        return actions
+    }
+    func performFolderAction(_ action: CatalogFolderAction) {
+        catalogFolderAction = action
+        guard let console = catalogConsole else { return }
+        let folders = catalogFolders(for: console)
+        let folder = folders.indices.contains(catalogFolderIndex) ? folders[catalogFolderIndex] : nil
+        switch action {
+        case .place:
+            guard let folder else { catalogFolderMessage = "Crie uma pasta para organizar os jogos."; return }
+            placeSelectedGame(in: folder.id)
+        case .rename:
+            guard let folder else { return }
+            beginRenameCatalogFolder(folder.id)
+        case .delete:
+            guard let folder else { return }
+            deleteCatalogFolder(folder.id)
+        case .remove:
+            clearSelectedGameFolder()
+        case .create:
+            if renamingFolderID != nil {
+                confirmCatalogFolder()
+                return
+            }
+            if CatalogNames.cleaned(folderDraft) != nil, let created = organizer.createFolder(named: folderDraft, console: console.rawValue) {
+                folderDraft = ""
+                renamingFolderID = nil
+                catalogFolderMessage = "Pasta \(created.name) criada."
+                catalogFolderIndex = max(0, organizer.layout(for: console.rawValue).folders.count - 1)
+            } else if CatalogNames.cleaned(folderDraft) == nil {
+                catalogFolderMessage = "Escreva o nome da pasta."
+            } else {
+                catalogFolderMessage = "Essa pasta já existe, ou o limite de 20 foi atingido."
+            }
+        }
+    }
+    private func moveFolderList(_ direction: Int) {
+        if catalogFolderAction != nil {
+            if direction < 0 { catalogFolderAction = nil }
+            return
+        }
+        guard let console = catalogConsole else { return }
+        let folders = organizer.layout(for: console.rawValue).folders
+        if folders.isEmpty {
+            catalogFolderAction = .create
+            return
+        }
+        let next = catalogFolderIndex + direction
+        if next < 0 { return }
+        if next >= folders.count {
+            catalogFolderAction = availableFolderActions().first
+            return
+        }
+        if renamingFolderID != nil {
+            renamingFolderID = nil
+            folderDraft = ""
+        }
+        catalogFolderIndex = next
+    }
+    private func moveFolderActions(_ direction: Int) {
+        let actions = availableFolderActions()
+        guard !actions.isEmpty else { return }
+        guard let current = catalogFolderAction, let index = actions.firstIndex(of: current) else {
+            catalogFolderAction = direction >= 0 ? actions.first : actions.last
+            return
+        }
+        catalogFolderAction = actions[(index + direction + actions.count) % actions.count]
+    }
+    func setCatalogSort(ascending: Bool) {
+        guard let console = catalogConsole, !showingLibrarySettings, launching == nil,
+              errorMessage == nil, storageNotice == nil else { return }
+        withAnimation(.easeOut(duration: reduceMotion ? 0 : 0.18)) {
+            organizer.setAscending(ascending, console: console.rawValue)
+        }
+    }
+    func toggleCatalogSection(_ sectionID: String) {
+        guard let console = catalogConsole, !showingCatalogFolders else { return }
+        withAnimation(.easeOut(duration: reduceMotion ? 0 : 0.18)) {
+            organizer.toggleCollapsed(sectionID, console: console.rawValue)
+        }
+        alignCatalogSelection()
+    }
+    func toggleSectionOfSelection() {
+        guard let console = catalogConsole, let id = selectedGame?.id else { return }
+        guard let section = catalogSections(for: console).first(where: { section in
+            section.collapsible && section.games.contains { $0.id == id }
+        }) else { return }
+        toggleCatalogSection(section.id)
+    }
+    func showCatalogFolders() {
+        guard catalogConsole != nil, launching == nil, !booting, !showingLibrarySettings,
+              errorMessage == nil, storageNotice == nil, NSApp.modalWindow == nil else { return }
+        folderDraft = ""
+        renamingFolderID = nil
+        catalogFolderMessage = nil
+        catalogFolderIndex = 0
+        catalogFolderAction = nil
+        showingCatalogFolders = true
+    }
+    func toggleCatalogFolders() {
+        if showingCatalogFolders { dismissCatalogFolders() }
+        else { showCatalogFolders() }
+    }
+    func dismissCatalogFolders() {
+        showingCatalogFolders = false
+        folderDraft = ""
+        renamingFolderID = nil
+        catalogFolderMessage = nil
+        catalogFolderAction = nil
+    }
+    func beginRenameCatalogFolder(_ id: UUID) {
+        guard let console = catalogConsole,
+              let index = organizer.layout(for: console.rawValue).folders.firstIndex(where: { $0.id == id }) else { return }
+        catalogFolderIndex = index
+        renamingFolderID = id
+        folderDraft = organizer.layout(for: console.rawValue).folders[index].name
+        catalogFolderMessage = nil
+    }
+    func deleteCatalogFolder(_ id: UUID) {
+        guard let console = catalogConsole else { return }
+        let layout = organizer.layout(for: console.rawValue)
+        let name = layout.folders.first { $0.id == id }?.name ?? "Pasta"
+        if renamingFolderID == id {
+            renamingFolderID = nil
+            folderDraft = ""
+        }
+        organizer.deleteFolder(id, console: console.rawValue)
+        revealSection(CatalogGrouping.libraryID, console: console)
+        let count = organizer.layout(for: console.rawValue).folders.count
+        catalogFolderIndex = count == 0 ? 0 : min(catalogFolderIndex, count - 1)
+        catalogFolderMessage = "\(name) apagada. Os jogos continuam na Biblioteca."
+        alignCatalogSelection()
+    }
+    func placeSelectedGame(in folderID: UUID) {
+        guard let console = catalogConsole, let game = selectedGame,
+              let folder = organizer.layout(for: console.rawValue).folders.first(where: { $0.id == folderID }) else { return }
+        organizer.place(gameID: game.id, in: folderID, console: console.rawValue)
+        revealSection(folderID.uuidString, console: console)
+        if let index = organizer.layout(for: console.rawValue).folders.firstIndex(where: { $0.id == folderID }) {
+            catalogFolderIndex = index
+        }
+        catalogFolderMessage = "\(game.title) está em \(folder.name)."
+    }
+    func clearSelectedGameFolder() {
+        guard let console = catalogConsole, let game = selectedGame else { return }
+        organizer.place(gameID: game.id, in: nil, console: console.rawValue)
+        revealSection(CatalogGrouping.libraryID, console: console)
+        catalogFolderMessage = "\(game.title) voltou para Biblioteca."
+    }
+    private func revealSection(_ sectionID: String, console: Console) {
+        guard organizer.layout(for: console.rawValue).collapsed.contains(sectionID) else { return }
+        organizer.toggleCollapsed(sectionID, console: console.rawValue)
+    }
+    func confirmCatalogFolder() {
+        guard let console = catalogConsole else { return }
+        let key = console.rawValue
+        if let renaming = renamingFolderID {
+            if organizer.renameFolder(renaming, to: folderDraft, console: key) {
+                renamingFolderID = nil
+                folderDraft = ""
+                catalogFolderMessage = nil
+            } else {
+                catalogFolderMessage = "Use um nome novo, de 1 a 24 caracteres."
+            }
+            return
+        }
+        if CatalogNames.cleaned(folderDraft) != nil {
+            if let folder = organizer.createFolder(named: folderDraft, console: key) {
+                folderDraft = ""
+                catalogFolderMessage = "Pasta \(folder.name) criada."
+                catalogFolderIndex = max(0, organizer.layout(for: key).folders.count - 1)
+            } else {
+                catalogFolderMessage = "Essa pasta já existe, ou o limite de 20 foi atingido."
+            }
+            return
+        }
+        if !folderDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            catalogFolderMessage = "Use um nome de 1 a 24 caracteres."
+            return
+        }
+        let folders = organizer.layout(for: key).folders
+        guard folders.indices.contains(catalogFolderIndex) else {
+            catalogFolderMessage = "Crie uma pasta para organizar os jogos."
+            return
+        }
+        placeSelectedGame(in: folders[catalogFolderIndex].id)
     }
     func showCatalog() {
-        guard launching == nil, errorMessage == nil, storageNotice == nil, NSApp.modalWindow == nil, !showingLibrarySettings else { return }
+        guard launching == nil, errorMessage == nil, storageNotice == nil, NSApp.modalWindow == nil,
+              !showingLibrarySettings, !showingCatalogFolders else { return }
         finishBoot()
-        let forceRefresh = catalogConsole != nil
         let console = catalogConsole ?? selected
+        // A connected library is reread on open, so games copied in since the
+        // last visit show up. Offline keeps the saved list.
+        let forceRefresh = catalogConsole != nil || isStorageAvailable(for: console)
         catalogConsole = console
         catalog.refresh(console.rawValue, force: forceRefresh)
+        if forceRefresh { notice = "Atualizando jogos e capas de \(console.badge)…" }
+    }
+    /// Full rescan of the visible console, including covers. From the menu it
+    /// opens that console's catalog. A scan already in progress is left alone.
+    func reloadCatalog() {
+        guard launching == nil, !booting, errorMessage == nil, storageNotice == nil,
+              NSApp.modalWindow == nil, !showingLibrarySettings, !showingCatalogFolders else { return }
+        let console = catalogConsole ?? selected
+        guard !catalog.loading.contains(console.rawValue) else { return }
+        catalogConsole = console
+        catalog.refresh(console.rawValue, force: true)
+        notice = "Atualizando jogos e capas de \(console.badge)…"
     }
     func confirm() {
         guard errorMessage == nil, NSApp.modalWindow == nil else { return }
         if storageNotice != nil { dismissStorageNotice(); return }
+        if showingCatalogFolders {
+            if renamingFolderID != nil { confirmCatalogFolder() }
+            else if let action = catalogFolderAction { performFolderAction(action) }
+            else { confirmCatalogFolder() }
+            return
+        }
         if showingLibrarySettings {
             if !choosingLibraryFolder { chooseLibraryFolder?(settingsConsole) }
             return
         }
         if booting { finishBoot() }
         else if let console = catalogConsole {
-            if !catalog.loading.contains(console.rawValue), let game = selectedGame { launchGame(game) }
+            if catalogCommand != nil { activateCatalogCommand() }
+            else if !catalog.loading.contains(console.rawValue), let game = selectedGame { launchGame(game) }
         }
         else { launch(selected) }
     }
     func back() {
         guard errorMessage == nil, NSApp.modalWindow == nil else { return }
         if storageNotice != nil { dismissStorageNotice(); return }
+        if showingCatalogFolders {
+            if catalogFolderAction != nil { catalogFolderAction = nil; return }
+            dismissCatalogFolders()
+            return
+        }
         if showingLibrarySettings { dismissLibrarySettings(); return }
         if booting { finishBoot() }
         else if launching != nil { cancelLaunch() }
-        else if catalogConsole != nil { catalogConsole = nil }
+        else if catalogConsole != nil {
+            if catalogCommand != nil { catalogCommand = nil; return }
+            catalogConsole = nil
+        }
         else if fullscreen { toggleFullscreen?() }
-    }
-    /// Console menu. Leaves catalog, settings and the launch overlay without
-    /// closing DuckStation or PCSX2.
-    func returnHome() {
-        errorMessage = nil
-        if storageNotice != nil { dismissStorageNotice() }
-        choosingLibraryFolder = false
-        if showingLibrarySettings {
-            showingLibrarySettings = false
-            librarySettingsError = nil
-        }
-        if launching != nil {
-            if !isOpening || waitingForRestart { cancelLaunch() }
-            else { clearLaunchState() }
-        }
-        finishBoot()
-        if catalogConsole != nil {
-            withAnimation(.easeOut(duration: reduceMotion ? 0 : 0.2)) { catalogConsole = nil }
-        }
     }
     func launch(_ console: Console) {
         guard launching == nil, !booting, errorMessage == nil, storageNotice == nil,
-              !showingLibrarySettings, !stopping.contains(console) else { return }
+              !showingLibrarySettings, !showingCatalogFolders, !stopping.contains(console) else { return }
         select(console)
         guard let url = console.applicationURL else {
             errorMessage = "Não encontrei o \(console.emulator). Coloque o aplicativo na pasta Aplicativos e tente novamente."
@@ -319,14 +651,14 @@ final class LauncherModel: ObservableObject {
             return false
         }
         guard GameLaunchCheck.isAvailable(file, library: gameFolder(for: console)) else {
-            errorMessage = "Não foi possível acessar \(title). Verifique os arquivos e as permissões na pasta de \(console.badge):\n\(gameFolder(for: console).path)\n\nUse Pastas de jogos para corrigir o local ou △/T para atualizar o catálogo."
+            errorMessage = "Não foi possível acessar \(title). Verifique os arquivos e as permissões na pasta de \(console.badge):\n\(gameFolder(for: console).path)\n\nUse Pastas de jogos para corrigir o local ou Atualizar, R ou R2+L2 para recarregar o catálogo."
             return false
         }
         return true
     }
     func launchGame(_ game: CatalogGame) {
         guard let console = Console(rawValue: game.consoleKey), launching == nil, !booting,
-              errorMessage == nil, storageNotice == nil, !showingLibrarySettings,
+              errorMessage == nil, storageNotice == nil, !showingLibrarySettings, !showingCatalogFolders,
               !stopping.contains(console), NSApp.modalWindow == nil else { return }
         guard checkGameAccess(game.fileURL, title: game.title, console: console) else { return }
         refreshSessions()
@@ -717,6 +1049,7 @@ struct SystemMenu: View {
                         .foregroundStyle(Theme.pale.opacity(0.6))
                 }
                 Spacer()
+                CatalogReloadButton(model: model, catalog: model.catalog)
                 Button { model.showLibrarySettings() } label: {
                     Label("Pastas de jogos", systemImage: "folder.badge.gearshape")
                         .font(.system(size: 11)).foregroundStyle(Theme.ice.opacity(0.85))
@@ -742,7 +1075,6 @@ struct SystemMenu: View {
                     Button { model.toggleFullscreen?() } label: { hint("□", model.fullscreen ? "Janela" : "Tela cheia", "F", Color(red: 0.83, green: 0.58, blue: 0.80)) }
                     Button { model.showCatalog() } label: { hint("△", "Listar jogos \(model.selected.badge)", "T", Color(red: 0.4, green: 0.9, blue: 0.68)) }
                         .accessibilityLabel("Listar jogos \(model.selected.badge)")
-                    homeHint
                     Spacer()
                     HStack(spacing: 8) {
                         Image(systemName: "arrow.up.arrow.down").font(.system(size: 12))
@@ -783,14 +1115,6 @@ struct SystemMenu: View {
             ConsoleOption(console: .ps1, model: model)
             ConsoleOption(console: .ps2, model: model)
         }.frame(width: layout.optionWidth)
-    }
-    private var homeHint: some View {
-        HStack(spacing: 8) {
-            Text("PS").font(.system(size: 12, weight: .black))
-            Text("Início").font(.system(size: 12)).foregroundStyle(Theme.pale.opacity(0.9))
-        }
-        .foregroundStyle(Theme.ice)
-        .help("Botão PlayStation do DualSense volta ao menu da central, mesmo com o emulador na frente")
     }
     private func hint(_ symbol: String, _ label: String, _ key: String, _ color: Color) -> some View {
         HStack(spacing: 8) {
@@ -1046,7 +1370,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                                           onBack: { [weak self] in self?.handleController { $0.back() } },
                                           onFullscreen: { [weak self] in self?.handleController { $0.toggleFullscreen?() } },
                                           onCatalog: { [weak self] in self?.handleController { $0.showCatalog() } },
-                                          onHome: { [weak self] in self?.returnToAppHome() },
+                                          onReload: { [weak self] in self?.handleController { $0.reloadCatalog() } },
+                                          onSort: { [weak self] ascending in self?.handleController { $0.setCatalogSort(ascending: ascending) } },
+                                          onFolders: { [weak self] in self?.handleController { $0.toggleCatalogFolders() } },
                                           navigationContext: { [weak self] in self?.analogNavigationContext },
                                           repeatsAnalog: { [weak self] in
                                               guard let self else { return false }
@@ -1059,12 +1385,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         navigationObserver = Publishers.CombineLatest4(model.$booting, model.$catalogConsole,
                                                        model.$launching, model.$errorMessage)
             .combineLatest(model.$storageNotice)
-            .combineLatest(model.$showingLibrarySettings, model.$choosingLibraryFolder)
-            .map { combined, settings, choosing -> String? in
+            .combineLatest(model.$showingLibrarySettings, model.$choosingLibraryFolder, model.$showingCatalogFolders)
+            .map { combined, settings, choosing, organizing -> String? in
                 let (state, storage) = combined
                 let (booting, console, launching, error) = state
                 guard !booting, launching == nil, error == nil, storage == nil, !choosing else { return nil }
                 if settings { return "library-settings" }
+                if organizing { return "catalog-folders" }
                 return console.map { "catalog-\($0.rawValue)" } ?? "menu"
             }
             .removeDuplicates()
@@ -1092,6 +1419,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             if [36, 76].contains(event.keyCode), !event.isARepeat { model.confirm(); return nil }
             return event.keyCode == 48 ? event : nil
         }
+        if model.showingCatalogFolders {
+            if event.keyCode == 53 { model.back(); return nil }
+            if [123, 124, 125, 126].contains(event.keyCode), !event.isARepeat {
+                if event.keyCode == 123 { model.move(-1) }
+                else if event.keyCode == 124 { model.move(1) }
+                else if event.keyCode == 126 { model.moveVertical(-1) }
+                else { model.moveVertical(1) }
+                return nil
+            }
+            if [36, 76].contains(event.keyCode), !event.isARepeat { model.confirm(); return nil }
+            return event
+        }
         if modifiers.contains(.command) {
             if event.charactersIgnoringModifiers == "," { model.showLibrarySettings(); return nil }
             if model.showingLibrarySettings { return event }
@@ -1110,6 +1449,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         default:
             if event.charactersIgnoringModifiers?.lowercased() == "f", !event.isARepeat { toggleFullscreen(); return nil }
             if event.charactersIgnoringModifiers?.lowercased() == "t", !event.isARepeat { model.showCatalog(); return nil }
+            if event.charactersIgnoringModifiers?.lowercased() == "r", !event.isARepeat { model.reloadCatalog(); return nil }
+            if model.catalogConsole != nil, !model.showingLibrarySettings, !event.isARepeat {
+                switch event.charactersIgnoringModifiers?.lowercased() {
+                case "a": model.setCatalogSort(ascending: true); return nil
+                case "z": model.setCatalogSort(ascending: false); return nil
+                case "c": model.toggleSectionOfSelection(); return nil
+                case "p": model.toggleCatalogFolders(); return nil
+                default: break
+                }
+            }
             return event
         }
     }
@@ -1125,6 +1474,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
               NSApp.modalWindow == nil, !model.booting, model.launching == nil,
               model.errorMessage == nil, model.storageNotice == nil, !model.choosingLibraryFolder else { return nil }
         if model.showingLibrarySettings { return "library-settings" }
+        if model.showingCatalogFolders { return "catalog-folders" }
         return model.catalogConsole.map { "catalog-\($0.rawValue)" } ?? "menu"
     }
     private func updateActivity() {
@@ -1167,14 +1517,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         navigationObserver = nil
         controllerInput?.stop()
     }
-    private func returnToAppHome() {
-        if let sheet = window.attachedSheet {
-            window.endSheet(sheet, returnCode: .cancel)
-        }
-        model.returnHome()
-        NSApp.unhide(nil)
-        showWindow()
-    }
     @objc private func showWindow() {
         model.refreshStorage()
         if window.isMiniaturized { window.deminiaturize(nil) }
@@ -1188,7 +1530,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.standardWindowButton(.zoomButton)?.action = #selector(toggleFullscreen)
     }
     @objc private func toggleFullscreen() {
-        guard model.storageNotice == nil, !model.showingLibrarySettings else { return }
+        guard model.storageNotice == nil, !model.showingLibrarySettings, !model.showingCatalogFolders else { return }
         if model.fullscreen {
             model.fullscreen = false
             NSApp.presentationOptions = []
@@ -1234,7 +1576,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func showAbout() {
         let alert = NSAlert()
         alert.messageText = "PS1/2"
-        alert.informativeText = "Versão 4.10 · Interface inspirada no PlayStation 2\n\nEm Pastas de jogos (⌘,), escolha uma biblioteca para cada console no Mac ou em um disco externo. O padrão continua no Extreme SSD. Os arquivos não são movidos e as configurações dos emuladores permanecem intactas.\n\nCatálogos e capas salvos podem ser consultados offline. Para jogar, os arquivos devem estar acessíveis; reconectar um disco não inicia jogos automaticamente.\n\nUse setas, direcional ou analógico esquerdo para selecionar, Enter / X para confirmar, T / △ para listar jogos ou atualizar o catálogo, F / □ para tela cheia e Esc / ○ para voltar. O botão PlayStation do DualSense volta ao menu da central, mesmo com o emulador na frente. Solte o analógico ao centro ao trocar de tela.\n\nLogo: fornecido pelo usuário.\nFotos: Evan-Amos / Wikimedia — domínio público.\nGIFs: Tenor; créditos completos no pacote do app.\n\nInicializador pessoal para DuckStation e PCSX2, sem vínculo oficial com a Sony."
+        alert.informativeText = "Versão 4.12 · Interface inspirada no PlayStation 2\n\nEm Pastas de jogos (⌘,), escolha uma biblioteca para cada console no Mac ou em um disco externo. O padrão continua no Extreme SSD. Os arquivos não são movidos e as configurações dos emuladores permanecem intactas.\n\nNo catálogo, ↑ no primeiro jogo chega em A–Z, Pastas, Atualizar e Disco. × confirma a opção marcada e ↓ volta aos jogos.\n\nCatálogos e capas salvos podem ser consultados offline. Para jogar, os arquivos devem estar acessíveis; reconectar um disco não inicia jogos automaticamente.\n\nUse setas, direcional ou analógico esquerdo para selecionar, Enter / X para confirmar, T / △ para listar jogos, R ou R2+L2 para recarregar jogos e capas, L1 / A e R1 / Z para a ordem, P ou Options para pastas, C para minimizar a pasta do jogo, F / □ para tela cheia e Esc / ○ para voltar. Solte o analógico ao centro ao trocar de tela.\n\nLogo: fornecido pelo usuário.\nFotos: Evan-Amos / Wikimedia — domínio público.\nGIFs: Tenor; créditos completos no pacote do app.\n\nInicializador pessoal para DuckStation e PCSX2, sem vínculo oficial com a Sony."
         alert.icon = Theme.images["Logo"]
         alert.addButton(withTitle: "OK")
         alert.runModal()

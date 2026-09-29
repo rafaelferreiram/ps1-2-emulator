@@ -1,23 +1,52 @@
 import AppKit
 import ImageIO
+import QuartzCore
 
 let original = URL(fileURLWithPath: CommandLine.arguments[1])
 let target = URL(fileURLWithPath: CommandLine.arguments[2], isDirectory: true)
 guard let source = CGImageSourceCreateWithURL(original as CFURL, nil),
       let image = CGImageSourceCreateImageAtIndex(source, 0, nil),
       let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else { fatalError("Logo inválido") }
+
+/// macOS 27 Dock icons sit on a squircle inside the square canvas.
+/// Measured from the system Calendar icon at 256 px: the plate is 210 px,
+/// centered, with a continuous corner of about 43 px.
+func dockIcon(from image: CGImage, pixels: Int) -> CGImage {
+    let canvas = CGFloat(pixels)
+    let plate = canvas * (210.0 / 256.0)
+    let origin = (canvas - plate) / 2
+    // Continuous corners draw a little tighter than this radius, so the
+    // value is tuned until the silhouette matches a system Dock icon.
+    let radius = plate * (49.0 / 210.0)
+    let context = CGContext(data: nil, width: pixels, height: pixels, bitsPerComponent: 8,
+                            bytesPerRow: pixels * 4, space: colorSpace,
+                            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+    context.interpolationQuality = .high
+    context.clear(CGRect(x: 0, y: 0, width: canvas, height: canvas))
+
+    let layer = CALayer()
+    layer.bounds = CGRect(x: 0, y: 0, width: plate, height: plate)
+    layer.contentsScale = 1
+    layer.contentsGravity = .resize
+    layer.contents = image
+    layer.cornerRadius = radius
+    layer.cornerCurve = .continuous
+    layer.masksToBounds = true
+    layer.isGeometryFlipped = false
+
+    context.translateBy(x: origin, y: origin)
+    layer.render(in: context)
+    guard let masked = context.makeImage() else { fatalError("Falha ao arredondar o ícone") }
+    return masked
+}
+
 for size in [16, 32, 128, 256, 512] {
     for scale in [1, 2] {
         let pixels = size * scale
-        let context = CGContext(data: nil, width: pixels, height: pixels, bitsPerComponent: 8,
-                                bytesPerRow: pixels * 4, space: colorSpace,
-                                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
-        context.interpolationQuality = .high
-        context.draw(image, in: CGRect(x: 0, y: 0, width: pixels, height: pixels))
         let suffix = scale == 2 ? "@2x" : ""
         let url = target.appendingPathComponent("icon_\(size)x\(size)\(suffix).png")
         let destination = CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil)!
-        CGImageDestinationAddImage(destination, context.makeImage()!, nil)
+        CGImageDestinationAddImage(destination, dockIcon(from: image, pixels: pixels), nil)
         guard CGImageDestinationFinalize(destination) else { fatalError("Falha ao gerar ícone") }
     }
 }

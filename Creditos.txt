@@ -1,4 +1,4 @@
-PS1/2 — versão 4.10
+PS1/2 — versão 4.12
 
 Interface inspirada no menu do PlayStation 2. Fundo vetorial próprio.
 Marcador P1: desenho vetorial próprio, com tipografia arcade e ponta de cursor.

@@ -17,7 +17,7 @@
   <a href="#guia-completo">Guia completo</a>
 </p>
 
-<p align="center"><strong>Versão 4.10</strong> · Mac Apple Silicon · macOS 14 ou posterior</p>
+<p align="center"><strong>Versão 4.12</strong> · Mac Apple Silicon · macOS 14 ou posterior</p>
 
 <p align="center">
   <img src="docs/images/menu.png" width="920" alt="Menu principal: PlayStation 2 selecionado, com prévia, controles e DualSense">
@@ -29,7 +29,7 @@ Você traz os jogos e as BIOS. Eles ficam na pasta que você escolher, no Mac ou
 
 ## Uma amostra
 
-O menu acima é a tela inicial. PlayStation 2 está selecionado, a prévia roda sem abrir o emulador, e a faixa de baixo mostra teclado e controle. Com um DualSense, o botão **PlayStation** volta para esta tela mesmo com o jogo na frente.
+O menu acima é a tela inicial. PlayStation 2 está selecionado, a prévia roda sem abrir o emulador, e a faixa de baixo mostra teclado e controle.
 
 <table>
   <tr>
@@ -65,7 +65,7 @@ O script pede confirmação, instala a central e completa DuckStation e PCSX2 s�
 
 1. Abra cada emulador uma vez, informe suas BIOS e teste um jogo nele.
 2. Na central, abra **Pastas de jogos** e aponte a pasta de PS1 e a de PS2.
-3. Escolha o console e pressione **T** ou **△** para ver os jogos.
+3. Escolha o console e pressione **T** ou **△** para ver os jogos. Com a pasta acessível, essa abertura já relê os arquivos, então jogos novos entram na hora. **Atualizar**, **R** ou **R2 + L2** repetem essa leitura.
 
 Se o Mac pedir as ferramentas de compilação, execute `xcode-select --install` e rode o instalador de novo. O passo a passo, as opções e o que fazer sem permissão em `/Applications` estão no [guia completo](#guia-completo).
 
@@ -75,8 +75,7 @@ Se o Mac pedir as ferramentas de compilação, execute `xcode-select --install` 
 - Catálogo com capas, no mouse, no teclado ou no controle.
 - Pasta independente para cada console, no Mac ou num disco externo.
 - A janela acompanha a tela: no MacBook e em outro monitor, maximizar ocupa a área disponível.
-- O botão **PlayStation** do DualSense volta ao menu dos consoles e deixa DuckStation e PCSX2 abertos.
-- O ícone do Dock continua sendo o logo atual depois de encerrar o app.
+- O ícone do Dock usa o logo atual, com o contorno arredondado do macOS, e continua visível depois de encerrar o app.
 
 | Ação | Teclado | Controle |
 |---|---|---|
@@ -84,14 +83,17 @@ Se o Mac pedir as ferramentas de compilação, execute `xcode-select --install` 
 | Confirmar | Enter | X |
 | Voltar | Esc | Círculo |
 | Tela cheia | F | Quadrado |
-| Ver ou atualizar os jogos | T | Triângulo |
-| Voltar ao menu da central | — | Botão PlayStation do DualSense |
+| Ver os jogos | T | Triângulo |
+| Atualizar jogos e capas | R, ou o botão Atualizar | R2 + L2, ou Triângulo dentro do catálogo |
+| Ordem A–Z ou Z–A | A ou Z, no catálogo | L1 ou R1 |
+| Pastas, Atualizar e Disco | ↑ no primeiro jogo, depois ←→ e Enter | ↑ no primeiro jogo, depois ←→ e X. ↓ volta aos jogos |
+| Pastas do catálogo | P. C minimiza a pasta do jogo | Options abre. ↑↓ escolhe a pasta, ←→ a ação, X confirma, Círculo fecha |
 
 ---
 
 ## Guia completo
 
-O repositório chama-se `ps1-2-emulator`. O aplicativo se chama **PS1/2** e o arquivo instalado é `PS1-2.app`, porque `/` é separador de pastas no macOS. Versão atual: **4.10, build 19**.
+O repositório chama-se `ps1-2-emulator`. O aplicativo se chama **PS1/2** e o arquivo instalado é `PS1-2.app`, porque `/` é separador de pastas no macOS. Versão atual: **4.12, build 24**.
 
 ## Começar aqui: clonar, instalar e abrir
 
@@ -124,7 +126,8 @@ O script pede confirmação, instala a central e baixa **DuckStation (PS1) e PCS
 - Marcador **P1** (Player 1) no console pré-selecionado, com visual arcade em azul-claro. Acompanha mouse, teclado e analógico; é apenas um cursor visual, não muda a porta do controle nos emuladores. Desenho vetorial local, sem novas imagens, fontes ou downloads.
 - Prévia animada do console pré-selecionado: GIF em loop, sem som e **sem iniciar o emulador**. Acompanha mouse, teclado e controle; continua ao retirar o mouse do cartão. A prévia pausa quando a central sai de foco e respeita a opção Reduzir movimento do macOS.
 - Abertura com GIF do console antes de iniciar/focar o emulador.
-- Catálogo por console, capas frontais, navegação por mouse, teclado e controle compatível.
+- Catálogo por console, capas frontais, navegação por mouse, teclado e controle compatível. O botão **Atualizar**, a tecla **R** e **R2 + L2** recarregam jogos e capas. No primeiro jogo, ↑ marca A–Z, Pastas, Atualizar e Disco; X confirma e ↓ volta aos jogos.
+- Pastas virtuais, como Futebol ou Luta, só agrupam a lista. Os arquivos continuam onde estão. Cada grupo abre e fecha na mesma tela. Sem pastas, o catálogo é uma lista única.
 - **Pastas de jogos**: uma biblioteca independente por console, local ou externa, salva neste Mac. Mantém o SSD original como padrão e permite restaurá-lo sem mover arquivos.
 - Cache local de catálogo e miniaturas, compartilhado com a capa do jogo carregado, para reduzir leituras repetidas do SSD.
 - Catálogos salvos de PS1 e PS2 restaurados ao iniciar, inclusive sem o SSD; aviso visual no estilo console ao tentar jogar offline. O subtítulo é “Playstation Retro Emulator”, sem o rótulo “MENU PRINCIPAL”.
@@ -132,8 +135,7 @@ O script pede confirmação, instala a central e baixa **DuckStation (PS1) e PCS
 - Miniatura da capa ao lado do jogo carregado no menu principal: 36 px de altura, preservando a proporção de cada console. Usa as mesmas capas do catálogo; se não houver uma correspondência segura, mostra um ícone de disco. A consulta acontece em segundo plano quando o jogo muda, sem reler a biblioteca a cada segundo.
 - Pedido de encerramento normal do emulador, com confirmação; não força o fechamento.
 - A interface acompanha o tamanho da janela e da tela em que ela está. No MacBook de 14 polegadas e em outros monitores, maximizar ou usar tela cheia aumenta o menu, a prévia e o catálogo para ocupar a área disponível.
-- O ícone fixado no Dock continua sendo o logo atual depois de encerrar a central. A instalação registra essa cópia e deixa de usar o ícone de backups ou da Lixeira.
-- O botão **PlayStation** do DualSense (PS5) traz a central para a frente e volta ao menu dos consoles. Funciona no catálogo, nas pastas de jogos e com DuckStation ou PCSX2 na frente. Não encerra o emulador nem altera o mapeamento dentro do jogo.
+- O ícone fixado no Dock usa o logo atual, com o contorno arredondado do macOS, e continua depois de encerrar a central. A instalação registra essa cópia e deixa de usar o ícone de backups ou da Lixeira.
 
 ## Requisitos da central
 
@@ -277,9 +279,11 @@ Cancelar o seletor mantém tudo como estava. **Restaurar padrão** volta à past
 
 As escolhas ficam nas preferências locais do app, separadas para PS1 e PS2, e sobrevivem ao fechamento/reabertura e à atualização do aplicativo. A central não move/copia jogos nem altera BIOS, saves, memory cards ou as configurações dos emuladores. Se quiser a mesma biblioteca listada dentro do DuckStation/PCSX2, configure a pasta também nas preferências deles. `--destination` no instalador muda apenas onde os aplicativos são instalados.
 
-As capas são lidas de `~/Library/Application Support/DuckStation/covers` e `~/Library/Application Support/PCSX2/covers`, com alternativas junto aos jogos. Três capas frontais incluídas em `assets/Covers/PS2` têm prioridade para padronizar a apresentação. Imagens deitadas ou quadradas são rejeitadas no PS2 para evitar capas completas de frente e verso; o filtro não reconhece automaticamente toda arte incorreta.
+As capas oficiais vêm de `~/Library/Application Support/DuckStation/covers` e `~/Library/Application Support/PCSX2/covers`, pelo serial do disco. Uma imagem na pasta do jogo tem preferência quando o catálogo não tem uma capa oficial só dele: PNG, JPG, JPEG ou WebP. Pode se chamar `capa`, `cover` ou `front`, ou ser a única imagem ao lado do disco. Se o jogo estiver numa subpasta `GAME`, a imagem pode ficar na pasta de cima. Dois discos com o mesmo serial não dividem a mesma arte: a capa oficial fica com o jogo do nome original, e o outro usa a imagem da própria pasta.
 
-A listagem não copia jogos. ZIP/RAR/7z não aparecem. CUE/BIN válidos são agrupados, sem listar cada faixa como um jogo. Descritores incompletos são omitidos com aviso.
+No PS2, a capa mostrada é a frontal, em retrato. Uma única imagem aberta da caixa, com verso, lombada e frente, aparece só pela frente. Se também existir um arquivo `capa`, é esse arquivo que o catálogo usa. Três capas frontais incluídas em `assets/Covers/PS2` padronizam a apresentação desses títulos.
+
+A listagem não copia jogos. ZIP/RAR/7z não aparecem. CUE/BIN válidos são agrupados, sem listar cada faixa como um jogo. Uma pasta só com faixas BIN, sem CUE, entra como um jogo: a faixa 1. As faixas seguintes continuam do mesmo disco e não viram jogos separados. Descritores incompletos são omitidos com aviso.
 
 Se o macOS pedir acesso ao volume externo, escolha **Permitir** para realizar uma carga completa ou abrir um jogo. Enquanto o aviso aguarda uma resposta, pode aparecer “Carregando catálogo…”. Nenhuma permissão é contornada automaticamente.
 
@@ -291,16 +295,23 @@ Se o macOS pedir acesso ao volume externo, escolha **Permitir** para realizar um
 | Confirmar/abrir | Enter | X |
 | Voltar/cancelar abertura | Esc | Círculo |
 | Tela cheia/janela | F | Quadrado |
-| Listar jogos do console / atualizar catálogo | T | Triângulo |
-| Voltar ao menu da central | — | Botão PlayStation do DualSense |
+| Listar jogos do console | T | Triângulo |
+| Recarregar jogos e capas | R, ou o botão Atualizar | R2 + L2. Dentro do catálogo, Triângulo também recarrega |
+| Ordem do catálogo | A para A–Z, Z para Z–A | L1 para A–Z, R1 para Z–A |
+| Pastas, Atualizar e Disco | ↑ no primeiro jogo, depois ←→ e Enter. ↓ volta aos jogos | ↑ no primeiro jogo, depois ←→ e X. ↓ volta aos jogos. L1, R1, Options e △ continuam atalhos |
+| Pastas do catálogo | P abre. C minimiza ou mostra a pasta do jogo marcado | Options abre o painel. ↑↓ escolhe a pasta, ←→ a ação, X confirma, Círculo fecha |
 | Configurar pastas de jogos | ⌘, ou botão no cabeçalho | Abra pelo botão; depois direcional/analógico escolhe PS1/PS2, X abre o seletor e Círculo volta |
 | Encerrar a central | ⌘Q | — |
 
 No mouse, passar sobre PS1/PS2 pré-seleciona o console; clicar inicia a abertura. A prévia do console pré-selecionado continua mesmo sem hover e também acompanha as setas do teclado ou controle. É silenciosa, usa os GIFs locais e não faz downloads. O mapeamento do controle dentro dos jogos continua sendo responsabilidade de cada emulador.
 
-O analógico esquerdo seleciona em quatro direções. No menu, cada inclinação troca o console uma vez: solte ao centro antes de repetir na mesma direção. No catálogo, esquerda/direita move um jogo e cima/baixo move uma linha; segurar repete após 450 ms, com intervalo de 140 ms. A zona neutra e a estabilização de diagonais evitam movimentos por pequenas oscilações. Após trocar de tela, usar um botão ou voltar de outro aplicativo, solte o analógico ao centro para rearmar. O analógico direito não navega.
+O analógico esquerdo seleciona em quatro direções. No menu, cada inclinação troca o console uma vez: solte ao centro antes de repetir na mesma direção. No catálogo, esquerda/direita move um jogo e cima/baixo move uma linha; no fim de uma pasta, a seleção continua na pasta aberta ao lado. Segurar repete após 450 ms, com intervalo de 140 ms. A zona neutra e a estabilização de diagonais evitam movimentos por pequenas oscilações. Após trocar de tela, usar um botão ou voltar de outro aplicativo, solte o analógico ao centro para rearmar. O analógico direito não navega.
 
-X, Círculo, Quadrado, Triângulo, direcional e analógico só agem com a central em foco. A exceção é o botão PlayStation do DualSense: ele traz a janela da central para a frente e abre o menu dos consoles, saindo do catálogo, das pastas de jogos ou da abertura. DuckStation e PCSX2 continuam abertos. O mapeamento do controle dentro dos jogos continua sendo responsabilidade de cada emulador. Em alguns sistemas o macOS consome o botão PlayStation e ele não chega ao aplicativo.
+A–Z e Z–A reordenam a mesma lista. No controle, ↑ no primeiro jogo marca A–Z, Pastas, Atualizar e Disco; ←→ troca a opção, × confirma e ↓ volta aos jogos. L1, R1, OPTIONS e △ continuam atalhos. **Pastas** cria grupos como Futebol ou Luta e só organiza o catálogo: nenhum arquivo é movido. Sem pastas, a tela continua uma lista única. Com pastas, cada grupo tem uma linha que minimiza e mostra os jogos, e o que ficar de fora aparece em Biblioteca.
+
+O botão **Atualizar** recarrega a lista e as capas do console em foco. A tecla **R** e **R2 + L2** fazem o mesmo, no menu ou no catálogo. Dentro do catálogo, **T / △** também recarrega. R2 e L2 precisam estar pressionados juntos; soltar só um gatilho não dispara de novo.
+
+X, Círculo, Quadrado, Triângulo, R2, L2, direcional e analógico só agem com a central em foco. O mapeamento do controle dentro dos jogos continua sendo responsabilidade de cada emulador.
 
 ## Sessões e limites
 
@@ -316,9 +327,9 @@ X, Círculo, Quadrado, Triângulo, direcional e analógico só agem com a centra
 
 O cache fica em `~/Library/Caches/local.rafael.centraldejogos/`, no armazenamento interno do Mac. Guarda apenas o índice dos jogos e miniaturas de capas; não copia ISOs, BINs, BIOS ou saves e não usa espaço adicional no SSD dos jogos.
 
-- `Catalog/`: salva a **última carga completa bem-sucedida**, com títulos, caminhos, capas e associação dos discos CUE/CCD/M3U. Abrir, fechar e reabrir o catálogo apenas reutiliza esse índice, da memória ou do disco local, **sem varrer nem conferir metadados dos jogos no SSD**. Mantém até oito índices em memória e até oito arquivos / 16 MiB em disco (máximo de 4 MiB por arquivo).
+- `Catalog/`: salva a **última carga completa bem-sucedida**, com títulos, caminhos, capas e associação dos discos CUE/CCD/M3U. Com o disco desconectado, abrir o catálogo reutiliza esse índice, da memória ou do disco local, sem varrer a biblioteca. Mantém até oito índices em memória e até oito arquivos / 16 MiB em disco (máximo de 4 MiB por arquivo).
 - Ao iniciar a central, ambos os catálogos são restaurados do cache local, mesmo sem o SSD. Se ainda não houver cache salvo, essa restauração não faz uma varredura; será necessário conectar o SSD e abrir/atualizar o catálogo uma primeira vez. Não apague o cache se quiser manter a consulta offline.
-- Uma carga completa acontece na primeira abertura sem cache válido, ao confirmar uma pasta diferente ou ao pressionar **△ / T dentro do catálogo**. Jogos adicionados/removidos e capas substituídas só aparecem após essa atualização. Voltar ao app, conectar ou desconectar o SSD não dispara uma varredura. Se a atualização falhar, a última lista salva daquela biblioteca continua visível com um aviso.
+- Uma carga completa acontece ao abrir o catálogo com a pasta acessível, na primeira abertura sem cache válido, ao confirmar uma pasta diferente, ou ao usar **Atualizar**, **R**, **R2 + L2** ou **△ / T**. Jogos e capas adicionados desde a última visita entram nessa leitura. Só voltar ao app, ou conectar e desconectar o disco sem abrir o catálogo, não dispara uma varredura. Se a atualização falhar, a última lista salva daquela biblioteca continua visível com um aviso.
 - O índice é separado por **console e caminho da biblioteca**. Mudar de pasta remove imediatamente a lista anterior da tela; uma tarefa antiga não pode recolocá-la. Voltar à biblioteca padrão pode recuperar seu cache, sujeito aos limites acima. Nenhuma escolha apaga arquivos de jogos ou de capas.
 - `Thumbnails/`: miniaturas de 320 px para o catálogo e 108 px para o menu, associadas à mesma carga salva. Os acertos em RAM/disco não consultam a capa original. O catálogo prepara as duas resoluções em segundo plano; se uma miniatura ainda não existir ou tiver sido removida pelo limite do cache, tenta ler apenas a capa correspondente, sem reler os jogos. Sem acesso à capa, mostra um espaço reservado.
 - O cache de capas tem orçamento de 32 MiB de imagens retidas em memória e 64 MiB / 256 arquivos em disco. Views visíveis podem manter imagens adicionais; esse orçamento não é o consumo total do app. A limpeza automática remove apenas arquivos deste cache.
@@ -334,6 +345,7 @@ Na raiz do projeto:
 ```bash
 bash tests/run-monitor-tests.sh
 bash tests/run-catalog-tests.sh
+bash tests/run-catalog-organization-tests.sh
 bash tests/run-hover-animation-tests.sh
 bash tests/run-now-playing-tests.sh
 bash tests/run-launcher-preview-tests.sh
@@ -380,9 +392,10 @@ As 19 capas, salvas nas duas resoluções (38 miniaturas), ocuparam 3,3 MB no ca
 ```text
 PS12.swift                 Menu, janelas, estado e abertura de emuladores
 ResponsiveLayout.swift     Escala da interface conforme a janela e a tela
-ControllerInput.swift      Entrada pelo controle, inclusive o botão PlayStation
+ControllerInput.swift      Entrada pelo controle
 EmulatorMonitor.swift      Monitor de processos e jogo carregado
 GameCatalog.swift          Leitura das bibliotecas e seleção de capas
+CatalogOrganization.swift  Ordem A–Z/Z–A e pastas virtuais do catálogo
 GameLaunchCheck.swift      Validação apenas do jogo escolhido e seus arquivos de disco
 StorageNoticeView.swift    Aviso de disco desconectado com visual inspirado no console
 LibrarySettings.swift      Pastas PS1/PS2 persistentes e metadados do volume

@@ -78,6 +78,33 @@ struct AnalogNavigation {
     }
 }
 
+/// Fires once when L2 and R2 are both down. Releasing only one trigger does
+/// not arm another reload; both must return to rest first.
+struct TriggerChord {
+    private var left = false
+    private var right = false
+    private var armed = true
+
+    mutating func adopt(left: Bool, right: Bool) {
+        self.left = left
+        self.right = right
+        armed = !(left && right)
+    }
+
+    @discardableResult
+    mutating func update(left nextLeft: Bool?, right nextRight: Bool?) -> Bool {
+        if let nextLeft { left = nextLeft }
+        if let nextRight { right = nextRight }
+        if left && right {
+            guard armed else { return false }
+            armed = false
+            return true
+        }
+        if !left && !right { armed = true }
+        return false
+    }
+}
+
 /// Reads the first supported connected controller while the launcher is active.
 @MainActor
 final class ControllerInput {
@@ -87,7 +114,9 @@ final class ControllerInput {
     private let onBack: () -> Void
     private let onFullscreen: () -> Void
     private let onCatalog: () -> Void
-    private let onHome: () -> Void
+    private let onReload: () -> Void
+    private let onSort: (Bool) -> Void
+    private let onFolders: () -> Void
     private let onConnectionChanged: (String?) -> Void
     private let navigationContext: () -> String?
     private let repeatsAnalog: () -> Bool
@@ -99,6 +128,7 @@ final class ControllerInput {
     private var generation = 0
     private var analog = AnalogNavigation()
     private var analogTimer: Timer?
+    private var triggerChord = TriggerChord()
 
     init(
         onMove: @escaping (Int) -> Void,
@@ -107,7 +137,9 @@ final class ControllerInput {
         onBack: @escaping () -> Void,
         onFullscreen: @escaping () -> Void = {},
         onCatalog: @escaping () -> Void = {},
-        onHome: @escaping () -> Void = {},
+        onReload: @escaping () -> Void = {},
+        onSort: @escaping (Bool) -> Void = { _ in },
+        onFolders: @escaping () -> Void = {},
         navigationContext: @escaping () -> String? = { "launcher" },
         repeatsAnalog: @escaping () -> Bool = { false },
         onConnectionChanged: @escaping (String?) -> Void
@@ -118,7 +150,9 @@ final class ControllerInput {
         self.onBack = onBack
         self.onFullscreen = onFullscreen
         self.onCatalog = onCatalog
-        self.onHome = onHome
+        self.onReload = onReload
+        self.onSort = onSort
+        self.onFolders = onFolders
         self.onConnectionChanged = onConnectionChanged
         self.navigationContext = navigationContext
         self.repeatsAnalog = repeatsAnalog
@@ -127,9 +161,6 @@ final class ControllerInput {
     func start() {
         guard !started else { return }
         started = true
-        // The PlayStation button must reach the launcher while an emulator is
-        // frontmost. Face buttons and sticks still ignore background presses.
-        GCController.shouldMonitorBackgroundEvents = true
         for name in [Notification.Name.GCControllerDidConnect, .GCControllerDidDisconnect] {
             observers.append(NotificationCenter.default.addObserver(
                 forName: name, object: nil, queue: .main
@@ -174,11 +205,14 @@ final class ControllerInput {
         bind(pad.buttonX, name: "fullscreen") { $0.onFullscreen() }
         // North face button: Triangle on DualSense.
         bind(pad.buttonY, name: "catalog") { $0.onCatalog() }
-        // DualSense PlayStation button. The system may consume it; when it
-        // arrives, it returns to this app even if another app is frontmost.
-        if let home = pad.buttonHome {
-            bind(home, name: "home", allowsBackground: true) { $0.onHome() }
+        bind(pad.leftShoulder, name: "sort-az") { $0.onSort(true) }
+        bind(pad.rightShoulder, name: "sort-za") { $0.onSort(false) }
+        if let options = pad.buttonOptions {
+            bind(options, name: "folders") { $0.onFolders() }
         }
+        triggerChord.adopt(left: pad.leftTrigger.isPressed, right: pad.rightTrigger.isPressed)
+        bindTrigger(pad.leftTrigger, isLeft: true)
+        bindTrigger(pad.rightTrigger, isLeft: false)
         let bindingGeneration = generation
         pad.leftThumbstick.valueChangedHandler = { [weak self] _, _, _ in
             Task { @MainActor in
@@ -212,6 +246,20 @@ final class ControllerInput {
                 // compete with a deliberate D-pad press.
                 self.suspendAnalogNavigation()
                 action(self)
+                self.refreshAnalogNavigation()
+            }
+        }
+    }
+
+    private func bindTrigger(_ button: GCControllerButtonInput, isLeft: Bool) {
+        let bindingGeneration = generation
+        button.pressedChangedHandler = { [weak self] _, _, pressed in
+            Task { @MainActor in
+                guard let self, self.started, self.generation == bindingGeneration else { return }
+                let fired = self.triggerChord.update(left: isLeft ? pressed : nil, right: isLeft ? nil : pressed)
+                guard fired, NSApp.isActive else { return }
+                self.suspendAnalogNavigation()
+                self.onReload()
                 self.refreshAnalogNavigation()
             }
         }
@@ -265,11 +313,15 @@ final class ControllerInput {
         if let pad = controller?.extendedGamepad {
             pad.leftThumbstick.valueChangedHandler = nil
             for button in [pad.dpad.up, pad.dpad.left, pad.dpad.down, pad.dpad.right,
-                           pad.buttonA, pad.buttonB, pad.buttonX, pad.buttonY] {
+                           pad.buttonA, pad.buttonB, pad.buttonX, pad.buttonY,
+                           pad.leftShoulder, pad.rightShoulder] {
                 button.pressedChangedHandler = nil
             }
-            pad.buttonHome?.pressedChangedHandler = nil
+            pad.buttonOptions?.pressedChangedHandler = nil
+            pad.leftTrigger.pressedChangedHandler = nil
+            pad.rightTrigger.pressedChangedHandler = nil
         }
+        triggerChord = TriggerChord()
         controller = nil
         heldInputs.removeAll()
     }

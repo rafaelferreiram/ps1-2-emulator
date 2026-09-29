@@ -266,9 +266,22 @@ enum CatalogScanner {
             } else { candidates.removeValue(forKey: file.path); invalidDescriptors += 1 }
         }
         for path in referenced { candidates.removeValue(forKey: path) }
-        // Loose Track 2/3/etc. BINs are generally audio, not launchable games.
+        // Loose Track 2/3/etc. BINs are audio. A folder with no CUE still has one
+        // game: its first data track. Later tracks stay attached to that entry.
+        var looseTracks: [String: [URL]] = [:]
         for file in files where file.pathExtension.lowercased() == "bin" && isTrack(file) {
             candidates.removeValue(forKey: file.path)
+            if !referenced.contains(file.path) {
+                looseTracks[file.deletingLastPathComponent().path, default: []].append(file)
+            }
+        }
+        for tracks in looseTracks.values {
+            guard let first = tracks.min(by: { trackOrder($0, $1) }), trackNumber(first) == 1 else { continue }
+            candidates[first.path] = first
+            var group = members[first.path] ?? [first.path]
+            for track in tracks where track.path != first.path { group.insert(track.path) }
+            members[first.path] = group
+            dataFiles[first.path] = first
         }
 
         // A valid playlist is one launch entry. Invalid/cyclic playlists never hide valid discs.
@@ -288,19 +301,25 @@ enum CatalogScanner {
         let frontCoverIndex = source.frontCovers.map { imageIndex(in: $0, consoleKey: source.consoleKey) } ?? [:]
         let coverIndex = imageIndex(in: source.covers, consoleKey: source.consoleKey)
         let names = databaseNames(source.database)
-        let directoryCounts = Dictionary(grouping: candidates.values, by: { $0.deletingLastPathComponent().path }).mapValues(\.count)
-        var games: [CatalogGame] = []
+        let gamePaths = candidates.values.map(\.path)
+        var pending: [PendingGame] = []
         for file in candidates.values {
             guard readableFile(file) else { unreadable = true; continue }
             let title = displayTitle(file)
             let serial = serialIn(file.deletingPathExtension().lastPathComponent)
                 ?? discSerial(dataFiles[file.path] ?? file)
+            let officialName = serial.flatMap { names[$0] }
+            let searchDirectories = coverSearchDirectories(file: file, gamePaths: gamePaths, rootPath: root.path)
             let cover = findCover(file: file, title: title, serial: serial,
-                                  databaseName: serial.flatMap { names[$0] }, frontCoverIndex: frontCoverIndex,
+                                  databaseName: officialName, frontCoverIndex: frontCoverIndex,
                                   coverIndex: coverIndex, consoleKey: source.consoleKey,
-                                  allowGeneric: directoryCounts[file.deletingLastPathComponent().path] == 1)
-            games.append(CatalogGame(id: file.path, consoleKey: source.consoleKey, title: title,
-                                     fileURL: file, coverURL: cover))
+                                  searchDirectories: searchDirectories)
+            pending.append(PendingGame(file: file, title: title, officialName: officialName, cover: cover,
+                                       searchDirectories: searchDirectories))
+        }
+        assignDistinctCovers(&pending, frontCoverIndex: frontCoverIndex, coverIndex: coverIndex, consoleKey: source.consoleKey)
+        var games = pending.map {
+            CatalogGame(id: $0.file.path, consoleKey: source.consoleKey, title: $0.title, fileURL: $0.file, coverURL: $0.cover)
         }
         games.sort {
             let comparison = $0.title.localizedStandardCompare($1.title)
@@ -325,10 +344,28 @@ enum CatalogScanner {
             options: .regularExpression) != nil
     }
 
+    private static func trackNumber(_ file: URL) -> Int {
+        let stem = file.deletingPathExtension().lastPathComponent
+        guard let regex = try? NSRegularExpression(pattern: #"(?i)track[\s._-]*(\d+)"#),
+              let match = regex.firstMatch(in: stem, range: NSRange(stem.startIndex..., in: stem)),
+              let range = Range(match.range(at: 1), in: stem),
+              let number = Int(stem[range]) else { return Int.max }
+        return number
+    }
+
+    private static func trackOrder(_ lhs: URL, _ rhs: URL) -> Bool {
+        let left = trackNumber(lhs)
+        let right = trackNumber(rhs)
+        if left != right { return left < right }
+        return lhs.lastPathComponent.localizedStandardCompare(rhs.lastPathComponent) == .orderedAscending
+    }
+
     private static func displayTitle(_ file: URL) -> String {
         let stem = file.deletingPathExtension().lastPathComponent
-        let clean = stem.replacingOccurrences(of: #"(?i)^(?:S[CL][A-Z]{2}|BETA)[-_. ]?\d{3}[._]?\d{2}[. _-]*"#,
+        let clean = stem.replacingOccurrences(of: #"(?i)^[A-Z]{4}[-_. ]?\d{3}[._]?\d{2}[. _-]*"#,
                                                with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"(?i)\s*(?:\(|\[)track[\s._-]*\d+(?:\)|\])\s*$"#,
+                                  with: "", options: .regularExpression)
             .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ".")))
         return clean.isEmpty ? stem : clean
     }
@@ -387,6 +424,74 @@ enum CatalogScanner {
         return ((try? handle.read(upToCount: 1))?.count ?? 0) == 1
     }
 
+    private struct PendingGame {
+        let file: URL
+        let title: String
+        let officialName: String?
+        var cover: URL?
+        let searchDirectories: [URL]
+    }
+
+    /// Folders that contain this game alone, from the disc's folder up to the
+    /// library root. A cover beside `GAME/` still belongs to that one disc.
+    private static func coverSearchDirectories(file: URL, gamePaths: [String], rootPath: String) -> [URL] {
+        var folder = file.deletingLastPathComponent()
+        var result: [URL] = []
+        while folder.path.hasPrefix(rootPath + "/") {
+            let prefix = folder.path + "/"
+            if gamePaths.filter({ $0.hasPrefix(prefix) }).count != 1 { break }
+            result.append(folder)
+            let parent = folder.deletingLastPathComponent()
+            if parent.path == folder.path { break }
+            folder = parent
+        }
+        return result
+    }
+
+    /// A shared serial cover belongs to the disc that matches the official name.
+    /// Another game that reused the serial, such as a patch, keeps only its own art.
+    private static func assignDistinctCovers(_ games: inout [PendingGame], frontCoverIndex: [String: URL],
+                                             coverIndex: [String: URL], consoleKey: String) {
+        let groups = Dictionary(grouping: games.indices.filter { games[$0].cover != nil }) {
+            canonicalPath(games[$0].cover!)
+        }
+        for indices in groups.values where indices.count > 1 {
+            let shared = indices.filter { !coverIsInsideGame(games[$0].cover!, file: games[$0].file) }
+            guard shared.count > 1 else { continue }
+            let official = shared.compactMap { games[$0].officialName }.first ?? ""
+            let best = shared.map { titleAffinity(games[$0].title, official: official) }.max() ?? 0
+            let top = shared.filter { titleAffinity(games[$0].title, official: official) == best }
+            let exact = top.filter { normalized(games[$0].title) == normalized(official) && !official.isEmpty }
+            let winners = Set(best == 0 ? [] : (exact.isEmpty ? top : exact))
+            for index in shared where !winners.contains(index) {
+                let local = findCover(file: games[index].file, title: games[index].title, serial: nil,
+                                      databaseName: nil, frontCoverIndex: frontCoverIndex, coverIndex: coverIndex,
+                                      consoleKey: consoleKey, searchDirectories: games[index].searchDirectories)
+                let sharedPath = games[index].cover.map(canonicalPath)
+                games[index].cover = local.map(canonicalPath) == sharedPath ? nil : local
+            }
+        }
+    }
+
+    private static func canonicalPath(_ url: URL) -> String {
+        url.resolvingSymlinksInPath().standardizedFileURL.path
+    }
+
+    private static func coverIsInsideGame(_ cover: URL, file: URL) -> Bool {
+        canonicalPath(cover).hasPrefix(canonicalPath(file.deletingLastPathComponent()) + "/")
+    }
+
+    private static func titleAffinity(_ title: String, official: String) -> Int {
+        let officialNorm = normalized(official)
+        let titleNorm = normalized(title)
+        guard !officialNorm.isEmpty, !titleNorm.isEmpty else { return 0 }
+        if titleNorm == officialNorm { return 10_000 }
+        return official.split { !$0.isLetter && !$0.isNumber }
+            .map { normalized(String($0)) }
+            .filter { $0.count >= 4 && titleNorm.contains($0) }
+            .reduce(0) { $0 + $1.count }
+    }
+
     private static func normalized(_ value: String) -> String {
         value.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "en_US_POSIX"))
             .unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }.map(String.init).joined()
@@ -421,9 +526,38 @@ enum CatalogScanner {
         return (0.55...0.85).contains(ratio)
     }
 
+    /// Unfolded PS2 case art is about 3:2, with the front on the right.
+    private static func soleCaseScan(in directory: URL) -> URL? {
+        guard let files = try? FileManager.default.contentsOfDirectory(at: directory,
+            includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]) else { return nil }
+        let images = files.filter { imageExtensions.contains($0.pathExtension.lowercased()) }
+        guard images.count == 1, let file = images.first,
+              let source = CGImageSourceCreateWithURL(file as CFURL, nil), CGImageSourceGetCount(source) > 0,
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let pixelWidth = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.doubleValue,
+              let pixelHeight = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.doubleValue,
+              pixelWidth > 0, pixelHeight > 0 else { return nil }
+        let orientation = (properties[kCGImagePropertyOrientation] as? NSNumber)?.intValue ?? 1
+        let rotated = (5...8).contains(orientation)
+        let ratio = rotated ? pixelHeight / pixelWidth : pixelWidth / pixelHeight
+        guard (1.35...1.65).contains(ratio) else { return nil }
+        return file
+    }
+
+    /// Keeps a normal cover unchanged. An unfolded case becomes its front panel.
+    static func displayImage(_ image: CGImage) -> CGImage {
+        let width = image.width
+        let height = image.height
+        guard width > 0, height > 0 else { return image }
+        let ratio = Double(width) / Double(height)
+        guard (1.35...1.65).contains(ratio) else { return image }
+        let frontWidth = min(width, max(1, Int((Double(height) * 0.72).rounded())))
+        return image.cropping(to: CGRect(x: width - frontWidth, y: 0, width: frontWidth, height: height)) ?? image
+    }
+
     private static func findCover(file: URL, title: String, serial: String?, databaseName: String?,
                                   frontCoverIndex: [String: URL], coverIndex: [String: URL],
-                                  consoleKey: String, allowGeneric: Bool) -> URL? {
+                                  consoleKey: String, searchDirectories: [URL]) -> URL? {
         let stem = file.deletingPathExtension().lastPathComponent
         // App-bundled front panels take precedence without changing emulator files.
         // Every source is filtered before matching so no fallback can reintroduce a spread.
@@ -433,15 +567,23 @@ enum CatalogScanner {
                 if let cover = index[normalized(name)] { return cover }
             }
         }
-        let nearby = imageIndex(in: file.deletingLastPathComponent(), consoleKey: consoleKey)
-        for name in [stem, title] {
-            if let cover = nearby[normalized(name)] { return cover }
+        for directory in searchDirectories {
+            let nearby = imageIndex(in: directory, consoleKey: consoleKey)
+            for name in [stem, title] {
+                if let cover = nearby[normalized(name)] { return cover }
+            }
+            // One image beside a single game is its cover, even as Capa_Titulo.png
+            // or a file the user dropped in the folder above GAME/.
+            if nearby.count == 1, let cover = nearby.values.first { return cover }
+            if let cover = nearby["capa"] ?? nearby["cover"] ?? nearby["front"] { return cover }
+            // A lone unfolded case (back, spine, front) still counts. The card shows
+            // only the front panel.
+            if let scan = soleCaseScan(in: directory) { return scan }
+            let coverFolder = imageIndex(in: directory.appendingPathComponent("Capa", isDirectory: true),
+                                        consoleKey: consoleKey)
+            if let cover = coverFolder["capa"] ?? coverFolder["cover"] ?? coverFolder["front"] { return cover }
         }
-        guard allowGeneric else { return nil }
-        if let cover = nearby["capa"] ?? nearby["cover"] ?? nearby["front"] { return cover }
-        let coverFolder = imageIndex(in: file.deletingLastPathComponent().appendingPathComponent("Capa", isDirectory: true),
-                                    consoleKey: consoleKey)
-        return coverFolder["capa"] ?? coverFolder["cover"] ?? coverFolder["front"]
+        return nil
     }
 
     /// Reads only top-level serial + name fields, not YAML tags or executable content.
@@ -470,7 +612,7 @@ enum CatalogScanner {
     }
 
     private static func serialIn(_ text: String) -> String? {
-        guard let range = text.range(of: #"(?i)\b(?:S[CL][A-Z]{2}|BETA)[-_. ]?\d{3}[._]?\d{2}\b"#, options: .regularExpression) else { return nil }
+        guard let range = text.range(of: #"(?i)\b[A-Z]{4}[-_. ]?\d{3}[._]?\d{2}\b"#, options: .regularExpression) else { return nil }
         let matched = String(text[range]).uppercased()
         let letters = matched.filter(\.isLetter)
         let digits = matched.filter(\.isNumber)
