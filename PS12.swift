@@ -11,7 +11,6 @@ enum Console: String, CaseIterable, Identifiable {
     var controller: String { self == .ps1 ? "Controle original" : "DualShock 2" }
     var asset: String { self == .ps1 ? "PS1Controller" : "PS2Controller" }
     var bundleID: String { self == .ps1 ? "com.github.stenzek.duckstation" : "net.pcsx2.pcsx2" }
-    var folder: URL { URL(fileURLWithPath: "/Volumes/Extreme SSD/Emulacao/\(badge)/Jogos", isDirectory: true) }
     var applicationURL: URL? {
         let standard = URL(fileURLWithPath: "/Applications/\(emulator).app", isDirectory: true)
         if FileManager.default.fileExists(atPath: standard.path) { return standard }
@@ -38,7 +37,11 @@ enum Theme {
 
 @MainActor
 final class LauncherModel: ObservableObject {
-    @Published var storageMounted = false
+    @Published private(set) var storageAvailability: [String: Bool] = [:]
+    @Published var showingLibrarySettings = false
+    @Published var choosingLibraryFolder = false
+    @Published var settingsConsole: Console = .ps2
+    @Published var librarySettingsError: String?
     @Published var selected: Console = .ps2
     @Published var launching: Console?
     @Published var notice = ""
@@ -54,28 +57,38 @@ final class LauncherModel: ObservableObject {
     @Published var isOpening = false
     @Published var stopping: Set<Console> = []
     @Published var catalogConsole: Console?
+    @Published var catalogColumns = Theme.catalogColumns
     @Published var gameSelection: [String: String] = [:]
     @Published var launchGameTitle: String?
     @Published var openingText = ""
     @Published var waitingForRestart = false
     let catalog: GameCatalog
+    let librarySettings: GameLibrarySettings
     let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
     var toggleFullscreen: (() -> Void)?
+    var chooseLibraryFolder: ((Console) -> Void)?
     private var timer: Timer?
-    private let storageProbe: () -> Bool
-    private let monitor = EmulatorMonitor()
+    private var libraryObserver: AnyCancellable?
+    private let storageProbe: (() -> Bool)?
+    private let monitor: EmulatorMonitor
     private var launchURL: URL?
     private var launchGameURL: URL?
     private var restartDuckStation: (pid: Int32, launchedAt: Date?)?
     private var stopDeadlines: [Console: Date] = [:]
     let startedAt = Date()
 
-    init(catalog: GameCatalog? = nil, storageProbe: @escaping () -> Bool = {
-        FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: nil, options: [])?
-            .contains { $0.standardizedFileURL.path == "/Volumes/Extreme SSD" } ?? false
-    }, startServices: Bool = true) {
-        self.catalog = catalog ?? GameCatalog()
+    init(catalog: GameCatalog? = nil, librarySettings: GameLibrarySettings? = nil,
+         storageProbe: (() -> Bool)? = nil, startServices: Bool = true) {
+        let settings = librarySettings ?? GameLibrarySettings()
+        self.librarySettings = settings
+        let sources = Dictionary(uniqueKeysWithValues: Console.allCases.compactMap { console -> (String, CatalogSource)? in
+            guard let source = CatalogSource.installed(console.rawValue, root: settings.folder(for: console.rawValue)) else { return nil }
+            return (console.rawValue, source)
+        })
+        self.catalog = catalog ?? GameCatalog(sources: sources)
+        self.monitor = EmulatorMonitor(libraries: sources.mapValues { $0.root.path })
         self.storageProbe = storageProbe
+        libraryObserver = settings.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }
         refreshStorage()
         guard startServices else { return }
         self.catalog.restoreSavedCatalogs()
@@ -113,34 +126,88 @@ final class LauncherModel: ObservableObject {
     func refreshStorage() {
         // Read only the mounted-volume list, not game folders or descriptors.
         // An unplugged SSD does not erase the last complete catalog snapshot.
-        let mounted = storageProbe()
-        if storageMounted != mounted { storageMounted = mounted }
+        let volumes = Set(FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: nil, options: [])?
+            .map { $0.standardizedFileURL.path } ?? [])
+        let next = Dictionary(uniqueKeysWithValues: Console.allCases.map { console in
+            let volume = librarySettings.location(for: console.rawValue).volumePath
+            return (console.rawValue, storageProbe?() ?? volume.map { volumes.contains($0) } ?? true)
+        })
+        if storageAvailability != next { storageAvailability = next }
+    }
+    var storageMounted: Bool { isStorageAvailable(for: catalogConsole ?? selected) }
+    func isStorageAvailable(for console: Console) -> Bool { storageAvailability[console.rawValue] ?? false }
+    func gameFolder(for console: Console) -> URL { librarySettings.folder(for: console.rawValue) }
+    func showLibrarySettings() {
+        guard launching == nil, storageNotice == nil, errorMessage == nil, NSApp.modalWindow == nil,
+              !choosingLibraryFolder else { return }
+        finishBoot()
+        settingsConsole = catalogConsole ?? selected
+        librarySettingsError = nil
+        showingLibrarySettings = true
+    }
+    func dismissLibrarySettings() {
+        guard !choosingLibraryFolder else { return }
+        showingLibrarySettings = false
+        librarySettingsError = nil
+    }
+    func setGameFolder(_ folder: URL, for console: Console) {
+        guard launching == nil else { return }
+        librarySettingsError = nil
+        do {
+            guard try librarySettings.setFolder(folder, for: console.rawValue) else { return }
+            applyLibraryChange(for: console, fullLoad: true)
+        } catch { librarySettingsError = error.localizedDescription }
+    }
+    func resetGameFolder(for console: Console) {
+        guard launching == nil, !choosingLibraryFolder else { return }
+        guard librarySettings.reset(for: console.rawValue) else { return }
+        applyLibraryChange(for: console, fullLoad: false)
+    }
+    private func applyLibraryChange(for console: Console, fullLoad: Bool) {
+        librarySettingsError = nil
+        gameSelection.removeValue(forKey: console.rawValue)
+        let folder = gameFolder(for: console)
+        monitor.setLibrary(folder.path, for: console.rawValue)
+        if let source = CatalogSource.installed(console.rawValue, root: folder) {
+            catalog.setSource(source, restoreSaved: !fullLoad)
+            if fullLoad { catalog.refresh(console.rawValue, force: true) }
+        }
+        notice = "Pasta de \(console.badge) atualizada."
+        refreshStorage()
+        refreshSessions()
     }
     func finishBoot() {
         guard booting else { return }
         withAnimation(.easeOut(duration: reduceMotion ? 0 : 0.65)) { booting = false }
     }
     func select(_ console: Console) {
-        guard launching == nil, !booting, errorMessage == nil, storageNotice == nil else { return }
+        guard launching == nil, !booting, errorMessage == nil, storageNotice == nil, !showingLibrarySettings else { return }
         withAnimation(.easeOut(duration: reduceMotion ? 0 : 0.2)) { selected = console }
     }
     var previewConsole: Console? {
-        guard !booting, isForeground, launching == nil, catalogConsole == nil, errorMessage == nil, storageNotice == nil else { return nil }
+        guard !booting, isForeground, launching == nil, catalogConsole == nil, errorMessage == nil,
+              storageNotice == nil, !showingLibrarySettings else { return nil }
         return selected
     }
     func setConsoleHover(_ console: Console, inside: Bool) {
         guard inside, !booting, isForeground, launching == nil,
-              catalogConsole == nil, errorMessage == nil, storageNotice == nil else { return }
+              catalogConsole == nil, errorMessage == nil, storageNotice == nil, !showingLibrarySettings else { return }
         select(console)
     }
     func move(_ direction: Int) {
         guard errorMessage == nil, storageNotice == nil, NSApp.modalWindow == nil else { return }
+        if showingLibrarySettings {
+            guard !choosingLibraryFolder else { return }
+            settingsConsole = settingsConsole == .ps1 ? .ps2 : .ps1
+            return
+        }
         guard !booting, launching == nil else { finishBoot(); return }
         if catalogConsole != nil { moveGame(direction); return }
         select(selected == .ps1 ? .ps2 : .ps1)
     }
     func moveVertical(_ direction: Int) {
-        if catalogConsole != nil { moveGame(direction * Theme.catalogColumns) } else { move(direction) }
+        if showingLibrarySettings { move(direction); return }
+        if catalogConsole != nil { moveGame(direction * catalogColumns) } else { move(direction) }
     }
     var listedGames: [CatalogGame] { catalog.games[catalogConsole?.rawValue ?? ""] ?? [] }
     var selectedGame: CatalogGame? {
@@ -148,7 +215,7 @@ final class LauncherModel: ObservableObject {
         return listedGames.first { $0.id == gameSelection[console.rawValue] } ?? listedGames.first
     }
     func selectGame(_ game: CatalogGame) {
-        guard launching == nil, storageNotice == nil, game.consoleKey == catalogConsole?.rawValue else { return }
+        guard launching == nil, storageNotice == nil, !showingLibrarySettings, game.consoleKey == catalogConsole?.rawValue else { return }
         gameSelection[game.consoleKey] = game.id
     }
     private func moveGame(_ delta: Int) {
@@ -158,7 +225,7 @@ final class LauncherModel: ObservableObject {
         selectGame(listedGames[next])
     }
     func showCatalog() {
-        guard launching == nil, errorMessage == nil, storageNotice == nil, NSApp.modalWindow == nil else { return }
+        guard launching == nil, errorMessage == nil, storageNotice == nil, NSApp.modalWindow == nil, !showingLibrarySettings else { return }
         finishBoot()
         let forceRefresh = catalogConsole != nil
         let console = catalogConsole ?? selected
@@ -168,6 +235,10 @@ final class LauncherModel: ObservableObject {
     func confirm() {
         guard errorMessage == nil, NSApp.modalWindow == nil else { return }
         if storageNotice != nil { dismissStorageNotice(); return }
+        if showingLibrarySettings {
+            if !choosingLibraryFolder { chooseLibraryFolder?(settingsConsole) }
+            return
+        }
         if booting { finishBoot() }
         else if let console = catalogConsole {
             if !catalog.loading.contains(console.rawValue), let game = selectedGame { launchGame(game) }
@@ -177,13 +248,34 @@ final class LauncherModel: ObservableObject {
     func back() {
         guard errorMessage == nil, NSApp.modalWindow == nil else { return }
         if storageNotice != nil { dismissStorageNotice(); return }
+        if showingLibrarySettings { dismissLibrarySettings(); return }
         if booting { finishBoot() }
         else if launching != nil { cancelLaunch() }
         else if catalogConsole != nil { catalogConsole = nil }
         else if fullscreen { toggleFullscreen?() }
     }
+    /// Console menu. Leaves catalog, settings and the launch overlay without
+    /// closing DuckStation or PCSX2.
+    func returnHome() {
+        errorMessage = nil
+        if storageNotice != nil { dismissStorageNotice() }
+        choosingLibraryFolder = false
+        if showingLibrarySettings {
+            showingLibrarySettings = false
+            librarySettingsError = nil
+        }
+        if launching != nil {
+            if !isOpening || waitingForRestart { cancelLaunch() }
+            else { clearLaunchState() }
+        }
+        finishBoot()
+        if catalogConsole != nil {
+            withAnimation(.easeOut(duration: reduceMotion ? 0 : 0.2)) { catalogConsole = nil }
+        }
+    }
     func launch(_ console: Console) {
-        guard launching == nil, !booting, errorMessage == nil, storageNotice == nil, !stopping.contains(console) else { return }
+        guard launching == nil, !booting, errorMessage == nil, storageNotice == nil,
+              !showingLibrarySettings, !stopping.contains(console) else { return }
         select(console)
         guard let url = console.applicationURL else {
             errorMessage = "Não encontrei o \(console.emulator). Coloque o aplicativo na pasta Aplicativos e tente novamente."
@@ -221,19 +313,21 @@ final class LauncherModel: ObservableObject {
     }
     private func checkGameAccess(_ file: URL, title: String, console: Console) -> Bool {
         refreshStorage()
-        guard storageMounted else {
-            storageNotice = StorageNotice(gameTitle: title, consoleName: console.badge)
+        guard isStorageAvailable(for: console) else {
+            storageNotice = StorageNotice(gameTitle: title, consoleName: console.badge,
+                volumeName: librarySettings.location(for: console.rawValue).volumeName)
             return false
         }
-        guard GameLaunchCheck.isAvailable(file, library: console.folder) else {
-            errorMessage = "Não foi possível acessar \(title). Verifique os arquivos e as permissões do jogo no Extreme SSD. Use △ ou T para atualizar o catálogo se o jogo foi movido ou removido."
+        guard GameLaunchCheck.isAvailable(file, library: gameFolder(for: console)) else {
+            errorMessage = "Não foi possível acessar \(title). Verifique os arquivos e as permissões na pasta de \(console.badge):\n\(gameFolder(for: console).path)\n\nUse Pastas de jogos para corrigir o local ou △/T para atualizar o catálogo."
             return false
         }
         return true
     }
     func launchGame(_ game: CatalogGame) {
         guard let console = Console(rawValue: game.consoleKey), launching == nil, !booting,
-              errorMessage == nil, storageNotice == nil, !stopping.contains(console), NSApp.modalWindow == nil else { return }
+              errorMessage == nil, storageNotice == nil, !showingLibrarySettings,
+              !stopping.contains(console), NSApp.modalWindow == nil else { return }
         guard checkGameAccess(game.fileURL, title: game.title, console: console) else { return }
         refreshSessions()
         let current = state(console)
@@ -400,8 +494,10 @@ final class LauncherModel: ObservableObject {
         refreshSessions()
     }
     var storageText: String {
-        if storageMounted { return notice.isEmpty ? "Extreme SSD  ·  Conectado" : notice }
-        return "SSD desconectado · Catálogo salvo disponível · Conecte para jogar"
+        let console = catalogConsole ?? selected
+        let location = librarySettings.location(for: console.rawValue)
+        if storageMounted { return notice.isEmpty ? "\(location.volumeName) · \(console.badge)" : notice }
+        return "\(location.volumeName) desconectado · Catálogo salvo disponível"
     }
 }
 
@@ -554,7 +650,8 @@ struct ConsoleOption: View {
                 }.foregroundStyle(session.isRunning ? Theme.ice : Theme.pale.opacity(0.6))
                 if session.isRunning, let title = session.gameTitle, let path = session.gamePath {
                     NowPlayingGameView(consoleKey: console.rawValue, title: title, gamePath: path,
-                                       revision: catalog.revisions[console.rawValue] ?? 0)
+                                       revision: catalog.revisions[console.rawValue] ?? 0,
+                                       source: catalog.source(for: console.rawValue))
                         .id(path)
                 } else {
                     Text(session.isRunning ? session.activityDescription : "Pronto para iniciar")
@@ -585,11 +682,12 @@ struct ConsoleOption: View {
 struct ConsolePreview: View {
     let console: Console
     let reducedMotion: Bool
+    let size: CGSize
 
     var body: some View {
         VStack(spacing: 12) {
             HoverAnimationView(resourceName: console == .ps1 ? "PS1Startup" : "PS2Startup", reducedMotion: reducedMotion)
-                .frame(width: 398, height: 298)
+                .frame(width: size.width, height: size.height)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.ice.opacity(0.18), lineWidth: 1))
                 .shadow(color: Theme.blue.opacity(0.10), radius: 16)
@@ -604,6 +702,7 @@ struct ConsolePreview: View {
 
 struct SystemMenu: View {
     @ObservedObject var model: LauncherModel
+    let layout: LauncherLayout
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 18) {
@@ -618,29 +717,23 @@ struct SystemMenu: View {
                         .foregroundStyle(Theme.pale.opacity(0.6))
                 }
                 Spacer()
+                Button { model.showLibrarySettings() } label: {
+                    Label("Pastas de jogos", systemImage: "folder.badge.gearshape")
+                        .font(.system(size: 11)).foregroundStyle(Theme.ice.opacity(0.85))
+                }.buttonStyle(.plain).help("Escolher as pastas de PS1 e PS2 · ⌘,")
                 TimelineView(.periodic(from: .now, by: 30)) { time in
                     VStack(alignment: .trailing, spacing: 5) {
                         Text(time.date, format: .dateTime.hour().minute()).font(.system(size: 16, weight: .regular, design: .monospaced))
                     }
                 }.foregroundStyle(Theme.pale.opacity(0.68))
             }.padding(.top, 42)
-            HStack(spacing: 0) {
-                ZStack {
-                    if let console = model.previewConsole {
-                        ConsolePreview(console: console, reducedMotion: model.reduceMotion)
-                            .id(console)
-                    }
-                }.frame(width: 440, height: 342)
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("Emulador").font(.system(size: 32, weight: .light, design: .rounded))
-                        .foregroundStyle(Theme.pale).shadow(color: Theme.blue.opacity(0.25), radius: 9).padding(.bottom, 9)
-                    Text("Selecione um console · acompanhe sua sessão").font(.system(size: 12)).tracking(0.6)
-                        .foregroundStyle(Theme.pale.opacity(0.62)).padding(.bottom, 18)
-                    ConsoleOption(console: .ps1, model: model)
-                    ConsoleOption(console: .ps2, model: model)
-                }.frame(width: 470).padding(.leading, 27)
-                Spacer(minLength: 0)
-            }.frame(maxHeight: .infinity)
+            Group {
+                if layout.stacksMenu {
+                    VStack(spacing: 32) { preview; consoleChoices }
+                } else {
+                    HStack(spacing: 32) { preview; consoleChoices }
+                }
+            }.frame(maxWidth: .infinity, maxHeight: .infinity)
             VStack(spacing: 21) {
                 Rectangle().fill(LinearGradient(colors: [.clear, Theme.ice.opacity(0.19), .clear], startPoint: .leading, endPoint: .trailing)).frame(height: 1)
                 HStack(spacing: 24) {
@@ -649,6 +742,7 @@ struct SystemMenu: View {
                     Button { model.toggleFullscreen?() } label: { hint("□", model.fullscreen ? "Janela" : "Tela cheia", "F", Color(red: 0.83, green: 0.58, blue: 0.80)) }
                     Button { model.showCatalog() } label: { hint("△", "Listar jogos \(model.selected.badge)", "T", Color(red: 0.4, green: 0.9, blue: 0.68)) }
                         .accessibilityLabel("Listar jogos \(model.selected.badge)")
+                    homeHint
                     Spacer()
                     HStack(spacing: 8) {
                         Image(systemName: "arrow.up.arrow.down").font(.system(size: 12))
@@ -659,6 +753,8 @@ struct SystemMenu: View {
                 HStack(spacing: 7) {
                     Circle().fill(model.storageMounted ? Theme.ice.opacity(0.8) : Color.orange).frame(width: 4, height: 4)
                     Text(model.storageText).font(.system(size: 10)).tracking(0.2)
+                        .lineLimit(1).truncationMode(.middle)
+                        .help(model.gameFolder(for: model.catalogConsole ?? model.selected).path)
                     Spacer()
                     if let name = model.controllerName {
                         Image(systemName: "gamecontroller").font(.system(size: 12))
@@ -666,7 +762,35 @@ struct SystemMenu: View {
                     }
                 }.foregroundStyle(Theme.pale.opacity(0.62))
             }.padding(.bottom, 31)
-        }.padding(.horizontal, 63).frame(width: 1100, height: 700)
+        }.padding(.horizontal, layout.horizontalPadding)
+            .frame(width: layout.canvasSize.width, height: layout.canvasSize.height)
+    }
+    private var preview: some View {
+        ZStack {
+            if let console = model.previewConsole {
+                ConsolePreview(console: console, reducedMotion: model.reduceMotion,
+                               size: CGSize(width: layout.previewWidth, height: layout.previewHeight))
+                    .id(console)
+            }
+        }.frame(width: layout.previewColumnWidth, height: layout.previewHeight + 38)
+    }
+    private var consoleChoices: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Emulador").font(.system(size: 32, weight: .light, design: .rounded))
+                .foregroundStyle(Theme.pale).shadow(color: Theme.blue.opacity(0.25), radius: 9).padding(.bottom, 9)
+            Text("Selecione um console · acompanhe sua sessão").font(.system(size: 12)).tracking(0.6)
+                .foregroundStyle(Theme.pale.opacity(0.62)).padding(.bottom, 18)
+            ConsoleOption(console: .ps1, model: model)
+            ConsoleOption(console: .ps2, model: model)
+        }.frame(width: layout.optionWidth)
+    }
+    private var homeHint: some View {
+        HStack(spacing: 8) {
+            Text("PS").font(.system(size: 12, weight: .black))
+            Text("Início").font(.system(size: 12)).foregroundStyle(Theme.pale.opacity(0.9))
+        }
+        .foregroundStyle(Theme.ice)
+        .help("Botão PlayStation do DualSense volta ao menu da central, mesmo com o emulador na frente")
     }
     private func hint(_ symbol: String, _ label: String, _ key: String, _ color: Color) -> some View {
         HStack(spacing: 8) {
@@ -689,7 +813,7 @@ struct BootOverlay: View {
             Spacer()
             Button("Enter ou clique para continuar") { model.finishBoot() }
                 .buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(Theme.pale.opacity(0.5)).padding(.bottom, 49)
-        }.frame(width: 1100, height: 700).contentShape(Rectangle()).onTapGesture { model.finishBoot() }
+        }.frame(maxWidth: .infinity, maxHeight: .infinity).contentShape(Rectangle()).onTapGesture { model.finishBoot() }
     }
 }
 
@@ -697,20 +821,25 @@ struct LauncherView: View {
     @ObservedObject var model: LauncherModel
     var body: some View {
         GeometryReader { geometry in
-            let scale = min(1, min(geometry.size.width / 1100, geometry.size.height / 700))
+            let layout = LauncherLayout(size: geometry.size)
             ZStack {
                 Theme.background
-                SystemScene(active: model.isForeground && model.launching == nil && model.catalogConsole == nil && model.previewConsole == nil, reduceMotion: model.reduceMotion, booting: model.booting, startedAt: model.startedAt, showOrbs: model.previewConsole == nil)
-                    .frame(width: 1100, height: 700).scaleEffect(scale)
+                SystemScene(active: model.isForeground && model.launching == nil && model.catalogConsole == nil && model.previewConsole == nil && !model.showingLibrarySettings, reduceMotion: model.reduceMotion, booting: model.booting, startedAt: model.startedAt, showOrbs: model.previewConsole == nil)
+                    .frame(width: layout.canvasSize.width, height: layout.canvasSize.height)
                 ZStack {
                     if model.booting { BootOverlay(model: model).transition(.opacity) }
                     else if let console = model.catalogConsole {
-                        GameCatalogView(console: console, model: model, catalog: model.catalog).transition(.opacity)
-                    } else { SystemMenu(model: model).transition(.opacity) }
-                }.frame(width: 1100, height: 700).scaleEffect(scale)
-                    .accessibilityHidden(model.launching != nil || model.storageNotice != nil)
-                    .allowsHitTesting(model.launching == nil && model.storageNotice == nil)
-                    .disabled(model.storageNotice != nil)
+                        GameCatalogView(console: console, layout: layout, model: model, catalog: model.catalog).transition(.opacity)
+                    } else { SystemMenu(model: model, layout: layout).transition(.opacity) }
+                }.frame(width: layout.canvasSize.width, height: layout.canvasSize.height)
+                    .accessibilityHidden(model.launching != nil || model.storageNotice != nil || model.showingLibrarySettings)
+                    .allowsHitTesting(model.launching == nil && model.storageNotice == nil && !model.showingLibrarySettings)
+                    .disabled(model.storageNotice != nil || model.showingLibrarySettings)
+                if model.showingLibrarySettings {
+                    LibrarySettingsView(model: model, settings: model.librarySettings)
+                        .frame(width: layout.canvasSize.width, height: layout.canvasSize.height)
+                        .zIndex(5)
+                }
                 if let console = model.launching, let id = model.launchID {
                     Color.black.ignoresSafeArea()
                     VStack(spacing: 18) {
@@ -736,15 +865,96 @@ struct LauncherView: View {
                 }
                 if let notice = model.storageNotice {
                     StorageNoticeView(notice: notice, onDismiss: model.dismissStorageNotice)
-                        .frame(width: 1100, height: 700).scaleEffect(scale)
+                        .frame(width: layout.canvasSize.width, height: layout.canvasSize.height)
                         .zIndex(10)
                 }
-            }.frame(width: geometry.size.width, height: geometry.size.height)
+            }.frame(width: layout.canvasSize.width, height: layout.canvasSize.height)
+                .scaleEffect(layout.scale, anchor: .center)
+                .frame(width: geometry.size.width, height: geometry.size.height)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.background)
+        .ignoresSafeArea()
         .preferredColorScheme(.dark)
         .alert("PS1/2", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
             Button("OK") { model.errorMessage = nil }
         } message: { Text(model.errorMessage ?? "") }
+    }
+}
+
+/// The running tile can be replaced in memory. After quit, the Dock asks
+/// Launch Services, which may still have an older copy of this bundle id
+/// (a backup or the Trash) and therefore the previous logo.
+private enum DockIconRefresh {
+    private static let defaultsKey = "PS12PublishedDockIcon"
+    private static let lsregister = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+
+    static func applyRunningIcon() {
+        guard let icon = currentIcon() else { return }
+        NSApp.applicationIconImage = icon.image
+    }
+
+    static func publishQuitIconIfNeeded() {
+        guard let icon = currentIcon() else { return }
+        let bundleURL = Bundle.main.bundleURL.standardizedFileURL.resolvingSymlinksInPath()
+        guard isInstalledApp(bundleURL),
+              UserDefaults.standard.string(forKey: defaultsKey) != icon.token else { return }
+        let mine = bundleURL.path
+        let identity = Bundle.main.bundleIdentifier ?? ""
+        let others = NSWorkspace.shared.urlsForApplications(withBundleIdentifier: identity)
+            .map { $0.standardizedFileURL.resolvingSymlinksInPath().path }
+            .filter { $0 != mine }
+        DispatchQueue.global(qos: .utility).async {
+            guard reregister(mine: mine, others: others) else { return }
+            DispatchQueue.main.async {
+                UserDefaults.standard.set(icon.token, forKey: defaultsKey)
+            }
+        }
+    }
+
+    private static func currentIcon() -> (image: NSImage, token: String)? {
+        let bundle = Bundle.main
+        guard let name = bundle.object(forInfoDictionaryKey: "CFBundleIconFile") as? String,
+              let url = bundle.url(forResource: name, withExtension: "icns"),
+              let image = NSImage(contentsOf: url) else { return nil }
+        let version = bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
+        let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+        let bytes = values?.fileSize ?? 0
+        let modified = values?.contentModificationDate?.timeIntervalSince1970 ?? 0
+        return (image, "\(name)|\(version)|\(bytes)|\(modified)")
+    }
+
+    private static func isInstalledApp(_ url: URL) -> Bool {
+        let path = url.path
+        if path.hasPrefix("/private/tmp/") || path.hasPrefix("/tmp/") || path.hasPrefix("/var/folders/") { return false }
+        return path.hasSuffix(".app")
+    }
+
+    private static func reregister(mine: String, others: [String]) -> Bool {
+        guard FileManager.default.isExecutableFile(atPath: lsregister) else { return false }
+        for path in others { _ = run(lsregister, ["-u", path]) }
+        guard run(lsregister, ["-f", mine]) else { return false }
+        let cache = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Caches/com.apple.iconservices.store", isDirectory: true)
+        try? FileManager.default.removeItem(at: cache)
+        _ = run("/usr/bin/killall", ["iconservicesagent"])
+        _ = run("/usr/bin/killall", ["Dock"])
+        return true
+    }
+
+    private static func run(_ launchPath: String, _ arguments: [String]) -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: launchPath)
+        process.arguments = arguments
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+            process.waitUntilExit()
+            return process.terminationStatus == 0
+        } catch {
+            return false
+        }
     }
 }
 
@@ -753,6 +963,41 @@ struct LauncherView: View {
 final class LauncherWindow: NSWindow {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
+}
+
+/// Keeps SwiftUI matched to the window. Using a hosting view directly as the
+/// content view leaves the ideal 1100×700 size in place when the window is
+/// zoomed or moved to another display.
+final class LauncherContentView: NSView {
+    private let hosting: NSHostingView<LauncherView>
+    private var layingOut = false
+
+    init(model: LauncherModel) {
+        hosting = NSHostingView(rootView: LauncherView(model: model))
+        super.init(frame: .zero)
+        hosting.sizingOptions = []
+        hosting.translatesAutoresizingMaskIntoConstraints = true
+        hosting.autoresizingMask = [.width, .height]
+        hosting.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        hosting.setContentHuggingPriority(.defaultLow, for: .vertical)
+        hosting.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        hosting.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+        addSubview(hosting)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: NSView.noIntrinsicMetric, height: NSView.noIntrinsicMetric)
+    }
+
+    override func layout() {
+        guard !layingOut else { return }
+        layingOut = true
+        defer { layingOut = false }
+        if hosting.frame != bounds { hosting.frame = bounds }
+        super.layout()
+    }
 }
 
 #if !LAUNCHER_MODEL_TESTS
@@ -775,13 +1020,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         withExtendedLifetime(delegate) { app.run() }
     }
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Refresh the running Dock tile explicitly instead of retaining an old
-        // Launch Services icon cached under this application's stable bundle ID.
-        if let name = Bundle.main.object(forInfoDictionaryKey: "CFBundleIconFile") as? String,
-           let url = Bundle.main.url(forResource: name, withExtension: "icns"),
-           let icon = NSImage(contentsOf: url) {
-            NSApp.applicationIconImage = icon
-        }
+        DockIconRefresh.applyRunningIcon()
+        DockIconRefresh.publishQuitIconIfNeeded()
         createMenu()
         window = LauncherWindow(contentRect: NSRect(x: 0, y: 0, width: 1100, height: 700),
                                 styleMask: normalStyle, backing: .buffered, defer: false)
@@ -794,18 +1034,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.delegate = self
         window.minSize = NSSize(width: 1000, height: 650)
         window.collectionBehavior = [.fullScreenNone]
-        window.contentView = NSHostingView(rootView: LauncherView(model: model))
+        window.contentView = LauncherContentView(model: model)
+        fitInitialWindowToScreen()
         window.center()
         configureWindowButton()
         model.toggleFullscreen = { [weak self] in self?.toggleFullscreen() }
+        model.chooseLibraryFolder = { [weak self] in self?.chooseGameFolder($0) }
         controllerInput = ControllerInput(onMove: { [weak self] direction in self?.handleController { $0.move(direction) } },
                                           onVerticalMove: { [weak self] direction in self?.handleController { $0.moveVertical(direction) } },
                                           onConfirm: { [weak self] in self?.handleController { $0.confirm() } },
                                           onBack: { [weak self] in self?.handleController { $0.back() } },
                                           onFullscreen: { [weak self] in self?.handleController { $0.toggleFullscreen?() } },
                                           onCatalog: { [weak self] in self?.handleController { $0.showCatalog() } },
+                                          onHome: { [weak self] in self?.returnToAppHome() },
                                           navigationContext: { [weak self] in self?.analogNavigationContext },
-                                          repeatsAnalog: { [weak self] in self?.model.catalogConsole != nil },
+                                          repeatsAnalog: { [weak self] in
+                                              guard let self else { return false }
+                                              return self.model.catalogConsole != nil && !self.model.showingLibrarySettings
+                                          },
                                           onConnectionChanged: { [weak self] in self?.model.controllerName = $0 })
         controllerInput?.start()
         // Sample neutral when a screen changes even if no stick event arrives.
@@ -813,9 +1059,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         navigationObserver = Publishers.CombineLatest4(model.$booting, model.$catalogConsole,
                                                        model.$launching, model.$errorMessage)
             .combineLatest(model.$storageNotice)
-            .map { state, storage -> String? in
+            .combineLatest(model.$showingLibrarySettings, model.$choosingLibraryFolder)
+            .map { combined, settings, choosing -> String? in
+                let (state, storage) = combined
                 let (booting, console, launching, error) = state
-                guard !booting, launching == nil, error == nil, storage == nil else { return nil }
+                guard !booting, launching == nil, error == nil, storage == nil, !choosing else { return nil }
+                if settings { return "library-settings" }
                 return console.map { "catalog-\($0.rawValue)" } ?? "menu"
             }
             .removeDuplicates()
@@ -832,7 +1081,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         showWindow()
     }
     private func handleKey(_ event: NSEvent) -> NSEvent? {
-        guard NSApp.isActive, NSApp.keyWindow === window, NSApp.modalWindow == nil, model.errorMessage == nil else { return event }
+        guard NSApp.isActive, NSApp.keyWindow === window, window?.attachedSheet == nil,
+              NSApp.modalWindow == nil, model.errorMessage == nil, !model.choosingLibraryFolder else { return event }
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         if model.storageNotice != nil {
             // Keep system shortcuts and Tab navigation, but no console/game
@@ -843,6 +1093,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             return event.keyCode == 48 ? event : nil
         }
         if modifiers.contains(.command) {
+            if event.charactersIgnoringModifiers == "," { model.showLibrarySettings(); return nil }
+            if model.showingLibrarySettings { return event }
             if event.charactersIgnoringModifiers == "1" { model.finishBoot(); model.launch(.ps1); return nil }
             if event.charactersIgnoringModifiers == "2" { model.finishBoot(); model.launch(.ps2); return nil }
             return event
@@ -863,14 +1115,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     private func handleController(_ action: (LauncherModel) -> Void) {
         guard NSApp.isActive, window?.isKeyWindow == true, window?.isVisible == true,
-              window?.isMiniaturized == false, model.errorMessage == nil, NSApp.modalWindow == nil else { return }
+              window?.isMiniaturized == false, window?.attachedSheet == nil,
+              !model.choosingLibraryFolder, model.errorMessage == nil, NSApp.modalWindow == nil else { return }
         action(model)
     }
     private var analogNavigationContext: String? {
         guard NSApp.isActive, window?.isKeyWindow == true, window?.isVisible == true,
               window?.isMiniaturized == false, window?.attachedSheet == nil,
               NSApp.modalWindow == nil, !model.booting, model.launching == nil,
-              model.errorMessage == nil, model.storageNotice == nil else { return nil }
+              model.errorMessage == nil, model.storageNotice == nil, !model.choosingLibraryFolder else { return nil }
+        if model.showingLibrarySettings { return "library-settings" }
         return model.catalogConsole.map { "catalog-\($0.rawValue)" } ?? "menu"
     }
     private func updateActivity() {
@@ -892,7 +1146,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NSApp.presentationOptions = []
     }
     func windowDidChangeScreen(_ notification: Notification) {
-        if model.fullscreen, let screen = window.screen { window.setFrame(screen.frame, display: true) }
+        refitToCurrentDisplay()
+    }
+    func applicationDidChangeScreenParameters(_ notification: Notification) {
+        refitToCurrentDisplay()
+    }
+    func windowWillUseStandardFrame(_ window: NSWindow, defaultFrame newFrame: NSRect) -> NSRect {
+        guard let screen = window.screen ?? NSScreen.main else { return newFrame }
+        return model.fullscreen ? screen.frame : screen.visibleFrame
     }
     func windowDidMiniaturize(_ notification: Notification) { updateActivity() }
     func windowDidDeminiaturize(_ notification: Notification) { updateActivity() }
@@ -905,6 +1166,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         navigationObserver = nil
         controllerInput?.stop()
+    }
+    private func returnToAppHome() {
+        if let sheet = window.attachedSheet {
+            window.endSheet(sheet, returnCode: .cancel)
+        }
+        model.returnHome()
+        NSApp.unhide(nil)
+        showWindow()
     }
     @objc private func showWindow() {
         model.refreshStorage()
@@ -919,7 +1188,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.standardWindowButton(.zoomButton)?.action = #selector(toggleFullscreen)
     }
     @objc private func toggleFullscreen() {
-        guard model.storageNotice == nil else { return }
+        guard model.storageNotice == nil, !model.showingLibrarySettings else { return }
         if model.fullscreen {
             model.fullscreen = false
             NSApp.presentationOptions = []
@@ -935,13 +1204,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             window.styleMask = [.borderless]
             window.setFrame(screen.frame, display: true)
         }
+        window.contentView?.layoutSubtreeIfNeeded()
         window.makeKeyAndOrderFront(nil)
         updateActivity()
+    }
+    /// Opens inside the current display. A 14-inch MacBook and a larger
+    /// external screen each keep the 1100×700 design only when it fits.
+    private func fitInitialWindowToScreen() {
+        guard let visible = (window.screen ?? NSScreen.main)?.visibleFrame else { return }
+        var frame = window.frame
+        guard frame.width > visible.width || frame.height > visible.height else { return }
+        frame.size.width = min(frame.width, visible.width)
+        frame.size.height = min(frame.height, visible.height)
+        window.setFrame(frame, display: false)
+    }
+    /// Fullscreen covers the display the window is on. A zoomed window fills
+    /// that display's usable area, below the menu bar and beside the Dock.
+    private func refitToCurrentDisplay() {
+        guard window != nil, let screen = window.screen ?? NSScreen.main else { return }
+        let target = model.fullscreen ? screen.frame : (window.isZoomed ? screen.visibleFrame : nil)
+        guard let target, framesDiffer(window.frame, target) else { return }
+        window.setFrame(target, display: true)
+        window.contentView?.layoutSubtreeIfNeeded()
+    }
+    private func framesDiffer(_ lhs: NSRect, _ rhs: NSRect) -> Bool {
+        abs(lhs.origin.x - rhs.origin.x) > 0.5 || abs(lhs.origin.y - rhs.origin.y) > 0.5
+            || abs(lhs.size.width - rhs.size.width) > 0.5 || abs(lhs.size.height - rhs.size.height) > 0.5
     }
     @objc private func showAbout() {
         let alert = NSAlert()
         alert.messageText = "PS1/2"
-        alert.informativeText = "Versão 4.8.1 · Interface inspirada no PlayStation 2\n\nO console pré-selecionado mostra sua prévia animada em loop, por mouse, teclado ou controle, sem abrir o emulador. Catálogos salvos de PS1 e PS2 são restaurados ao iniciar, mesmo sem o SSD. Ao tentar jogar sem ele, um aviso de armazenamento pede a conexão. Reconectar não inicia jogos automaticamente.\n\nUse setas, direcional ou analógico esquerdo para selecionar, Enter / X para confirmar, T / △ para listar jogos ou realizar uma nova carga completa, F / □ para tela cheia e Esc / ○ para voltar. Segure o analógico para percorrer o catálogo; solte ao centro ao trocar de tela.\n\nLogo: fornecido pelo usuário.\nFotos: Evan-Amos / Wikimedia — domínio público.\nGIFs: Tenor; créditos completos no pacote do app.\n\nInicializador pessoal para DuckStation e PCSX2, sem vínculo oficial com a Sony."
+        alert.informativeText = "Versão 4.10 · Interface inspirada no PlayStation 2\n\nEm Pastas de jogos (⌘,), escolha uma biblioteca para cada console no Mac ou em um disco externo. O padrão continua no Extreme SSD. Os arquivos não são movidos e as configurações dos emuladores permanecem intactas.\n\nCatálogos e capas salvos podem ser consultados offline. Para jogar, os arquivos devem estar acessíveis; reconectar um disco não inicia jogos automaticamente.\n\nUse setas, direcional ou analógico esquerdo para selecionar, Enter / X para confirmar, T / △ para listar jogos ou atualizar o catálogo, F / □ para tela cheia e Esc / ○ para voltar. O botão PlayStation do DualSense volta ao menu da central, mesmo com o emulador na frente. Solte o analógico ao centro ao trocar de tela.\n\nLogo: fornecido pelo usuário.\nFotos: Evan-Amos / Wikimedia — domínio público.\nGIFs: Tenor; créditos completos no pacote do app.\n\nInicializador pessoal para DuckStation e PCSX2, sem vínculo oficial com a Sony."
         alert.icon = Theme.images["Logo"]
         alert.addButton(withTitle: "OK")
         alert.runModal()
@@ -951,6 +1244,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let appItem = NSMenuItem()
         let appMenu = NSMenu(title: "PS1/2")
         appMenu.addItem(withTitle: "Sobre PS1/2", action: #selector(showAbout), keyEquivalent: "")
+        appMenu.addItem(withTitle: "Pastas de jogos…", action: #selector(showGameFolders), keyEquivalent: ",")
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Ocultar PS1/2", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(.separator())
@@ -966,5 +1260,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.addItem(item)
         NSApp.mainMenu = menu
         NSApp.windowsMenu = windowMenu
+    }
+    @objc private func showGameFolders() { model.showLibrarySettings() }
+
+    private func chooseGameFolder(_ console: Console) {
+        guard model.showingLibrarySettings, !model.choosingLibraryFolder, model.launching == nil,
+              window.attachedSheet == nil else { return }
+        model.settingsConsole = console
+        model.librarySettingsError = nil
+        model.choosingLibraryFolder = true
+        controllerInput?.suspendAnalogNavigation()
+        let panel = NSOpenPanel()
+        panel.title = "Pasta de jogos \(console.badge)"
+        panel.message = "Escolha a pasta com os jogos de \(console.badge), no Mac ou em um disco externo. Nada será movido."
+        panel.prompt = "Usar esta pasta"
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = false
+        if model.isStorageAvailable(for: console) { panel.directoryURL = model.gameFolder(for: console) }
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard let self else { return }
+            self.model.choosingLibraryFolder = false
+            if response == .OK, let folder = panel.url { self.model.setGameFolder(folder, for: console) }
+            self.controllerInput?.refreshAnalogNavigation()
+        }
     }
 }

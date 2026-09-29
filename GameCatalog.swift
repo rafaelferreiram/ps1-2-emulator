@@ -33,17 +33,45 @@ final class GameCatalog: ObservableObject {
     private var generations: [String: Int] = [:]
     private let cache: CatalogCache
     private let coverCache: CoverImageCache
-    private let sources: [String: CatalogSource]?
+    private var sources: [String: CatalogSource]
 
     init(cache: CatalogCache = .shared, coverCache: CoverImageCache = .shared, sources: [String: CatalogSource]? = nil) {
         self.cache = cache
         self.coverCache = coverCache
-        self.sources = sources
+        self.sources = sources ?? Dictionary(uniqueKeysWithValues: ["ps1", "ps2"].compactMap { key in
+            CatalogSource.installed(key).map { (key, $0) }
+        })
     }
 
-    private func source(for key: String) -> CatalogSource? {
-        if let sources { return sources[key] }
-        return CatalogSource.installed(key)
+    func source(for key: String) -> CatalogSource? {
+        sources[key]
+    }
+
+    /// Switching libraries immediately removes the previous console's visible
+    /// inventory and invalidates its pending work. Saved snapshots remain keyed
+    /// by their source, so switching back can restore offline without a scan.
+    /// An explicit folder selection may pass `restoreSaved: false` then refresh.
+    @discardableResult
+    func setSource(_ source: CatalogSource, restoreSaved: Bool = true) -> Task<Void, Never> {
+        let key = source.consoleKey
+        guard ["ps1", "ps2"].contains(key) else { return Task {} }
+        if let previous = sources[key],
+           previous.root.standardizedFileURL == source.root.standardizedFileURL,
+           previous.covers == source.covers, previous.database == source.database,
+           previous.frontCovers == source.frontCovers { return Task {} }
+        sources[key] = source
+        invalidate(key)
+        guard restoreSaved, let generation = generations[key] else { return Task {} }
+        return restoreSavedCatalog(source, generation: generation)
+    }
+
+    private func restoreSavedCatalog(_ source: CatalogSource, generation: Int) -> Task<Void, Never> {
+        let cache = self.cache
+        return Task { [weak self] in
+            guard let result = await cache.loadSaved(source), let self,
+                  self.publish(result, for: source.consoleKey, generation: generation) else { return }
+            await self.warm(result, for: source.consoleKey, generation: generation)
+        }
     }
 
     /// Populate both console menus from local snapshots at app startup, including
@@ -56,12 +84,7 @@ final class GameCatalog: ObservableObject {
             guard generations[key] == nil, let source = source(for: key) else { continue }
             let generation = 1
             generations[key] = generation
-            let cache = self.cache
-            restores.append(Task { [weak self] in
-                guard let result = await cache.loadSaved(source), let self,
-                      self.publish(result, for: key, generation: generation) else { return }
-                await self.warm(result, for: key, generation: generation)
-            })
+            restores.append(restoreSavedCatalog(source, generation: generation))
         }
         return Task { for restore in restores { await restore.value } }
     }
@@ -103,7 +126,7 @@ final class GameCatalog: ObservableObject {
     }
 
     /// Explicitly clear the visible model when resetting the catalog, not merely
-    /// when the SSD disconnects: saved inventories remain browsable offline.
+    /// when a game folder disconnects: saved inventories remain browsable offline.
     func invalidate(_ consoleKey: String) {
         generations[consoleKey, default: 0] += 1
         games[consoleKey] = []
@@ -129,11 +152,11 @@ struct CatalogSource: Sendable {
         self.frontCovers = frontCovers
     }
 
-    static func installed(_ consoleKey: String) -> CatalogSource? {
+    static func installed(_ consoleKey: String, root: URL? = nil) -> CatalogSource? {
         guard consoleKey == "ps1" || consoleKey == "ps2" else { return nil }
         let emulator = consoleKey == "ps1" ? "DuckStation" : "PCSX2"
         return CatalogSource(consoleKey: consoleKey,
-            root: URL(fileURLWithPath: "/Volumes/Extreme SSD/Emulacao/\(consoleKey.uppercased())/Jogos", isDirectory: true),
+            root: root ?? URL(fileURLWithPath: "/Volumes/Extreme SSD/Emulacao/\(consoleKey.uppercased())/Jogos", isDirectory: true),
             covers: FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent("Library/Application Support/\(emulator)/covers", isDirectory: true),
             database: URL(fileURLWithPath: "/Applications/\(emulator).app/Contents/Resources/\(consoleKey == "ps1" ? "gamedb.yaml" : "GameIndex.yaml")"),
@@ -182,7 +205,7 @@ enum CatalogScanner {
         let root = source.root.standardizedFileURL.resolvingSymlinksInPath()
         var isDirectory: ObjCBool = false
         guard fm.fileExists(atPath: root.path, isDirectory: &isDirectory), isDirectory.boolValue else {
-            return Inventory(warning: "SSD desconectado ou pasta de jogos indisponível.", reliable: false)
+            return Inventory(warning: "Pasta de jogos indisponível. Verifique o caminho e a conexão do disco, se externo.", reliable: false)
         }
         guard fm.isReadableFile(atPath: root.path) else {
             return Inventory(warning: "Não foi possível ler a pasta de jogos.", reliable: false)

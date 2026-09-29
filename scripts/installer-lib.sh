@@ -222,3 +222,54 @@ installer_publish_app() {
     /bin/rmdir "$staging" || true
     printf 'Instalado: %s\n' "$destination"
 }
+
+# Other copies of the same bundle id (backups, Trash) keep the previous Dock
+# bitmap. Launch Services returns that bitmap after the app quits.
+installer_bundle_copies() {
+    local identity="$1" lsregister path
+    lsregister="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+    [ -x "$lsregister" ] || return 0
+    "$lsregister" -dump 2>/dev/null | /usr/bin/awk -v id="$identity" '
+        /^path:/ {
+            line = $0
+            sub(/^path:[[:space:]]*/, "", line)
+            sub(/[[:space:]]+\(0x[0-9a-fA-F]+\)$/, "", line)
+            path = line
+        }
+        $0 ~ "^identifier:[[:space:]]+" id "$" && path != "" { print path }
+    '
+}
+
+installer_refresh_dock_icon() {
+    local app="$1" identity="$2" lsregister copy resolved parent
+    lsregister="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+    [ -d "$app" ] || return 1
+    parent="$(/usr/bin/dirname "$app")"
+    app="$(cd "$parent" && /bin/pwd -P)/$(/usr/bin/basename "$app")"
+    while IFS= read -r copy; do
+        [ -n "$copy" ] || continue
+        parent="$(/usr/bin/dirname "$copy")"
+        if [ -d "$parent" ]; then
+            resolved="$(cd "$parent" && /bin/pwd -P)/$(/usr/bin/basename "$copy")"
+        else
+            resolved="$copy"
+        fi
+        [ "$resolved" = "$app" ] && continue
+        if [ "${installer_dock_icon_dry_run:-no}" = yes ]; then
+            printf 'unregister %s\n' "$resolved"
+        elif [ -x "$lsregister" ]; then
+            "$lsregister" -u "$resolved" >/dev/null 2>&1 || true
+        fi
+    done < <(installer_bundle_copies "$identity")
+    if [ "${installer_dock_icon_dry_run:-no}" = yes ]; then
+        printf 'register %s\n' "$app"
+        return 0
+    fi
+    [ -x "$lsregister" ] && "$lsregister" -f "$app" >/dev/null 2>&1 || true
+    # The Dock keeps the previous image until IconServices and Dock restart.
+    /bin/rm -rf -- "$HOME/Library/Caches/com.apple.iconservices.store"
+    /usr/bin/killall iconservicesagent >/dev/null 2>&1 || true
+    if [ "${installer_restart_dock:-yes}" = yes ]; then
+        /usr/bin/killall Dock >/dev/null 2>&1 || true
+    fi
+}

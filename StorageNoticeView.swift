@@ -3,6 +3,7 @@ import SwiftUI
 struct StorageNotice: Equatable, Sendable {
     let gameTitle: String
     let consoleName: String
+    var volumeName: String = "Extreme SSD"
 }
 
 /// A local-storage notice, styled like the central's console UI. The launcher
@@ -28,7 +29,7 @@ struct StorageNoticeView: View {
         }
         .ignoresSafeArea()
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Aviso de armazenamento externo")
+        .accessibilityLabel("Aviso de armazenamento da biblioteca")
     }
 
     private var panel: some View {
@@ -51,7 +52,7 @@ struct StorageNoticeView: View {
                         .font(.system(size: 10, weight: .medium))
                         .tracking(1.8)
                         .foregroundStyle(Theme.ice.opacity(0.78))
-                    Text("Conecte o SSD para jogar")
+                    Text(notice.volumeName == "Extreme SSD" ? "Conecte o SSD para jogar" : "Conecte o disco para jogar")
                         .font(.system(size: 22, weight: .light))
                         .foregroundStyle(.white)
                         .fixedSize(horizontal: false, vertical: true)
@@ -66,7 +67,7 @@ struct StorageNoticeView: View {
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 12) {
-                Text("Para abrir este jogo no \(notice.consoleName), conecte o Extreme SSD ao Mac.")
+                Text("Para abrir este jogo no \(notice.consoleName), conecte \(notice.volumeName) ao Mac. Se a pasta mudou, confira Pastas de jogos.")
                     .font(.system(size: 13))
                     .foregroundStyle(Theme.pale.opacity(0.88))
                     .fixedSize(horizontal: false, vertical: true)

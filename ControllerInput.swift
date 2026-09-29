@@ -87,6 +87,7 @@ final class ControllerInput {
     private let onBack: () -> Void
     private let onFullscreen: () -> Void
     private let onCatalog: () -> Void
+    private let onHome: () -> Void
     private let onConnectionChanged: (String?) -> Void
     private let navigationContext: () -> String?
     private let repeatsAnalog: () -> Bool
@@ -106,6 +107,7 @@ final class ControllerInput {
         onBack: @escaping () -> Void,
         onFullscreen: @escaping () -> Void = {},
         onCatalog: @escaping () -> Void = {},
+        onHome: @escaping () -> Void = {},
         navigationContext: @escaping () -> String? = { "launcher" },
         repeatsAnalog: @escaping () -> Bool = { false },
         onConnectionChanged: @escaping (String?) -> Void
@@ -116,6 +118,7 @@ final class ControllerInput {
         self.onBack = onBack
         self.onFullscreen = onFullscreen
         self.onCatalog = onCatalog
+        self.onHome = onHome
         self.onConnectionChanged = onConnectionChanged
         self.navigationContext = navigationContext
         self.repeatsAnalog = repeatsAnalog
@@ -124,6 +127,9 @@ final class ControllerInput {
     func start() {
         guard !started else { return }
         started = true
+        // The PlayStation button must reach the launcher while an emulator is
+        // frontmost. Face buttons and sticks still ignore background presses.
+        GCController.shouldMonitorBackgroundEvents = true
         for name in [Notification.Name.GCControllerDidConnect, .GCControllerDidDisconnect] {
             observers.append(NotificationCenter.default.addObserver(
                 forName: name, object: nil, queue: .main
@@ -168,6 +174,11 @@ final class ControllerInput {
         bind(pad.buttonX, name: "fullscreen") { $0.onFullscreen() }
         // North face button: Triangle on DualSense.
         bind(pad.buttonY, name: "catalog") { $0.onCatalog() }
+        // DualSense PlayStation button. The system may consume it; when it
+        // arrives, it returns to this app even if another app is frontmost.
+        if let home = pad.buttonHome {
+            bind(home, name: "home", allowsBackground: true) { $0.onHome() }
+        }
         let bindingGeneration = generation
         pad.leftThumbstick.valueChangedHandler = { [weak self] _, _, _ in
             Task { @MainActor in
@@ -183,6 +194,7 @@ final class ControllerInput {
     private func bind(
         _ button: GCControllerButtonInput,
         name: String,
+        allowsBackground: Bool = false,
         action: @escaping @MainActor (ControllerInput) -> Void
     ) {
         if button.isPressed { heldInputs.insert(name) }
@@ -194,7 +206,8 @@ final class ControllerInput {
                     self.heldInputs.remove(name)
                     return
                 }
-                guard self.heldInputs.insert(name).inserted, NSApp.isActive else { return }
+                guard self.heldInputs.insert(name).inserted else { return }
+                if !allowsBackground, !NSApp.isActive { return }
                 // A held stick must not carry movement through X/O/Triangle or
                 // compete with a deliberate D-pad press.
                 self.suspendAnalogNavigation()
@@ -255,6 +268,7 @@ final class ControllerInput {
                            pad.buttonA, pad.buttonB, pad.buttonX, pad.buttonY] {
                 button.pressedChangedHandler = nil
             }
+            pad.buttonHome?.pressedChangedHandler = nil
         }
         controller = nil
         heldInputs.removeAll()

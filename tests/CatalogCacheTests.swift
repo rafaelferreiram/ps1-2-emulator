@@ -44,6 +44,7 @@ struct CatalogCacheTests {
         try await concurrentAndBounds(temporary)
         try await savedOnlyStartup(temporary)
         try await startupModel(temporary)
+        try await sourceChanges(temporary)
         print("PASS: FULL LOAD snapshot memory/disk browsing without metadata checks; changes visible only after forced refresh; offline browsing; failed FULL LOAD preserves saved games and disk; exact cached CUE/CCD/M3U ownership; no implicit artwork scan; v1 migration; corrupt/version/source recovery; concurrent coalescing and bounded persistence.")
     }
 
@@ -365,5 +366,119 @@ struct CatalogCacheTests {
         require(invalidated.games["ps1"]?.isEmpty == true && invalidated.snapshotIDs["ps1"] == nil && invalidated.revisions["ps1"] == 1,
                 "explicit invalidation prevents a pending saved restore from repopulating the model")
         print("PASS: saved-only app startup restores PS1/PS2 offline, warms cached 320/108 thumbnails, skips scans on cache miss, and respects refresh/invalidation generations.")
+    }
+
+    @MainActor
+    static func sourceChanges(_ base: URL) async throws {
+        let first = try Fixture(base, "source-a")
+        let second = try Fixture(base, "source-b")
+        let empty = try Fixture(base, "source-empty")
+        let consoleTwo = try Fixture(base, "source-ps2")
+        _ = try first.game("Library A.iso")
+        _ = try second.game("Library B.iso")
+        _ = try consoleTwo.game("PS2 Unchanged.iso")
+        // Deliberately keep every metadata folder equal: root alone must isolate
+        // the two libraries' snapshots and ownership maps.
+        let sourceA = first.source
+        let sourceB = CatalogSource(consoleKey: "ps1", root: second.games, covers: first.covers,
+                                    database: first.database, frontCovers: first.fronts)
+        let emptySource = CatalogSource(consoleKey: "ps1", root: empty.games, covers: first.covers,
+                                        database: first.database, frontCovers: first.fronts)
+        let ps2 = CatalogSource(consoleKey: "ps2", root: consoleTwo.games, covers: consoleTwo.covers,
+                                database: consoleTwo.database, frontCovers: consoleTwo.fronts)
+        let custom = CatalogSource.installed("ps1", root: second.games)
+        require(custom?.root == second.games && custom?.covers == CatalogSource.installed("ps1")?.covers,
+                "installed source accepts a custom root without changing emulator metadata paths")
+        require(CatalogSource.installed("ps2")?.root.path == "/Volumes/Extreme SSD/Emulacao/PS2/Jogos"
+                && CatalogSource.installed("invalid", root: second.games) == nil,
+                "default SSD paths remain unchanged and invalid consoles are rejected")
+
+        let directory = base.appendingPathComponent("source-switch-cache")
+        let seed = CatalogCache(directory: directory)
+        let savedA = await seed.load(sourceA)
+        let savedB = await seed.load(sourceB)
+        let savedPS2 = await seed.load(ps2)
+        let backend = CatalogCache(directory: directory)
+        let model = GameCatalog(cache: backend, coverCache: CoverImageCache(directory: nil),
+                                sources: ["ps1": sourceA, "ps2": ps2])
+        await model.restoreSavedCatalogs().value
+        require(model.games["ps1"] == savedA.games, "initial custom library restores its own snapshot")
+        await model.setSource(sourceB).value
+        require(model.source(for: "ps1")?.root == second.games && model.games["ps1"] == savedB.games
+                && model.snapshotIDs["ps1"] == savedB.snapshotID, "switching root restores only the new library")
+        require(model.games["ps2"] == savedPS2.games && model.revisions["ps2"] == 1,
+                "switching PS1 leaves PS2 games and revisions untouched")
+        let revision = model.revisions["ps1"]
+        await model.setSource(sourceB).value
+        require(model.revisions["ps1"] == revision, "selecting the unchanged source does not invalidate its cache")
+        await model.setSource(emptySource).value
+        require(model.games["ps1"]?.isEmpty == true && model.snapshotIDs["ps1"] == nil && model.errors["ps1"] == nil,
+                "new library without a snapshot cannot retain the previous library's list")
+        let noScan = await backend.statistics()
+        require(noScan.scans == 0 && noScan.fingerprintChecks == 0, "source changes perform saved-only restoration")
+        model.refresh("ps1", force: true)
+        try await waitForRefresh(model)
+        require(model.games["ps1"]?.isEmpty == true && model.snapshotIDs["ps1"] != nil,
+                "explicit full load of an empty folder saves an empty list, not games from the previous root")
+
+        // Both source-specific JSON snapshots must survive switching and work
+        // after their game folders disappear, including a new cache actor.
+        try FileManager.default.moveItem(at: first.games, to: first.directory.appendingPathComponent("OfflineGames"))
+        try FileManager.default.moveItem(at: second.games, to: second.directory.appendingPathComponent("OfflineGames"))
+        let offlineBackend = CatalogCache(directory: directory)
+        let offlineModel = GameCatalog(cache: offlineBackend, coverCache: CoverImageCache(directory: nil),
+                                       sources: ["ps1": emptySource])
+        await offlineModel.setSource(sourceA).value
+        require(offlineModel.games["ps1"] == savedA.games, "offline A is restored after another library was selected")
+        await offlineModel.setSource(sourceB).value
+        require(offlineModel.games["ps1"] == savedB.games, "offline B has a separate saved catalog")
+        let offlineStats = await offlineBackend.statistics()
+        require(offlineStats.scans == 0 && offlineStats.fingerprintChecks == 0 && offlineStats.diskHits == 2,
+                "offline source switching never probes game folders")
+
+        let raceModel = GameCatalog(cache: CatalogCache(directory: directory), coverCache: CoverImageCache(directory: nil),
+                                    sources: ["ps1": sourceA])
+        let oldRestore = raceModel.restoreSavedCatalogs()
+        let newRestore = raceModel.setSource(sourceB)
+        await oldRestore.value
+        await newRestore.value
+        require(raceModel.games["ps1"] == savedB.games && raceModel.source(for: "ps1")?.root == second.games,
+                "late restoration for A cannot repopulate B")
+
+        // Force refresh supersedes an already scheduled saved-only restoration
+        // of the same source after a folder change.
+        try FileManager.default.moveItem(at: second.directory.appendingPathComponent("OfflineGames"), to: second.games)
+        _ = try second.game("New in B.iso")
+        await raceModel.setSource(sourceA, restoreSaved: false).value
+        let oldB = raceModel.setSource(sourceB)
+        raceModel.refresh("ps1", force: true)
+        await oldB.value
+        try await waitForRefresh(raceModel)
+        require(raceModel.games["ps1"]?.map(\.title) == ["Library B", "New in B"],
+                "forced refresh after source switch supersedes the new source's older saved restore")
+
+        // Schedule a forced scan of the old root, then immediately switch away.
+        // Loading the same source joins its flight; a few yields deliver any
+        // stale publish to the main actor before checking the displayed list.
+        let pendingBackend = CatalogCache(directory: directory)
+        let pendingModel = GameCatalog(cache: pendingBackend, coverCache: CoverImageCache(directory: nil),
+                                       sources: ["ps1": sourceB])
+        pendingModel.refresh("ps1", force: true)
+        let switched = pendingModel.setSource(sourceA)
+        await switched.value
+        _ = await pendingBackend.load(sourceB, force: true)
+        for _ in 0..<10 { await Task.yield() }
+        require(pendingModel.games["ps1"] == savedA.games && pendingModel.source(for: "ps1")?.root == first.games,
+                "late scan of the previous library cannot replace the current offline catalog")
+        print("PASS: configurable roots preserve independent A/B offline snapshots, clear stale games, isolate consoles, and reject late restores/scans after source changes.")
+    }
+
+    @MainActor
+    static func waitForRefresh(_ model: GameCatalog) async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while !model.loading.isEmpty && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(1))
+        }
+        require(model.loading.isEmpty, "catalog refresh finishes within the test deadline")
     }
 }

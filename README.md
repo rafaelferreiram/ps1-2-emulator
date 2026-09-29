@@ -4,7 +4,7 @@ Central pessoal de jogos para macOS, feita em **SwiftUI + AppKit**, com visual i
 
 **Este projeto é um inicializador, não um emulador.** Ele abre o [DuckStation](https://www.duckstation.org/) para PS1 e o [PCSX2](https://pcsx2.net/) para PS2. O instalador deste repositório compila a central e baixa os emuladores oficiais que estiverem faltando; a configuração inicial de cada emulador continua sendo manual. Jogos, BIOS e saves não estão incluídos.
 
-O repositório chama-se `ps1-2-emulator`; o aplicativo se chama **PS1/2**. O bundle usa `PS1-2.app`, pois `/` é separador de pastas no macOS. Versão atual: **4.8.1, build 17**.
+O repositório chama-se `ps1-2-emulator`; o aplicativo se chama **PS1/2**. O bundle usa `PS1-2.app`, pois `/` é separador de pastas no macOS. Versão atual: **4.10, build 19**.
 
 ## Começar aqui: clonar, instalar e abrir
 
@@ -19,15 +19,17 @@ open /Applications/PS1-2.app
 
 **Já clonou?** Entre na pasta `ps1-2-emulator` e execute apenas os dois últimos comandos. Também é possível abrir a pasta no Finder e dar duplo clique em **Instalar.command**, que executa o mesmo instalador no Terminal.
 
+**Prefere baixar sem Git?** No GitHub, use **Code → Download ZIP**, extraia o ZIP no Finder, leia este README e execute **Instalar.command** na pasta extraída. As Command Line Tools continuam necessárias para compilar. Como o repositório é privado, apenas contas com acesso conseguem baixá-lo; o instalador não depende da presença de uma pasta `.git`.
+
 Se o Git ou as ferramentas de compilação estiverem faltando, execute `xcode-select --install`, conclua o instalador da Apple e tente novamente. Se `/Applications` não permitir gravação, use a [instalação na sua pasta pessoal](#instalar-sem-permissão-de-gravação-em-applications).
 
 O script pede confirmação, instala a central e baixa **DuckStation (PS1) e PCSX2 (PS2) apenas se estiverem ausentes**. Não precisa de Homebrew, não usa `sudo`, não reinicia o Mac e não abre aplicativos automaticamente. Depois:
 
 1. Abra DuckStation e PCSX2 uma vez, forneça suas BIOS e configure o controle e as bibliotecas no assistente de cada um. Se o macOS pedir Rosetta para o PCSX2, a instalação e a aceitação ficam por sua conta.
 2. Teste um jogo diretamente em cada emulador. O instalador **não baixa BIOS nem jogos** e não configura os emuladores por você.
-3. Conecte o SSD com as [pastas esperadas pela central](#bibliotecas-e-capas). Na central, selecione o console e pressione **T / △** para abrir o catálogo; dentro dele, **T / △** faz uma carga completa.
+3. Na central, abra **Pastas de jogos** (ou **⌘,**) e escolha a pasta PS1 e a pasta PS2 no Mac ou em um disco externo. A escolha carrega aquele catálogo; selecione o console e pressione **T / △** para ver os jogos. Dentro do catálogo, **T / △** atualiza a lista quando adicionar/remover arquivos. Veja [Bibliotecas e capas](#bibliotecas-e-capas).
 
-**Atenção em outra máquina:** clonar o repositório não copia seu catálogo, capas em cache, jogos, BIOS, saves ou configurações. Os caminhos dos jogos ainda são fixos para o volume `Extreme SSD`; usar outro nome/local exige ajustar o código antes de instalar. A central abre sem SSD, mas uma máquina nova só terá catálogo offline depois de uma primeira carga com a biblioteca conectada.
+**Atenção em outra máquina:** clonar ou baixar o repositório não copia catálogo, capas em cache, jogos, BIOS, saves ou configurações pessoais. Não é preciso editar código para escolher a biblioteca. A central abre sem SSD, mas uma máquina nova só terá catálogo offline depois de uma primeira carga com a pasta acessível. Além dos jogos, o usuário precisa fornecer as BIOS e concluir a configuração inicial dos emuladores; o instalador não elimina essa etapa.
 
 ## Funcionalidades
 
@@ -36,12 +38,15 @@ O script pede confirmação, instala a central e baixa **DuckStation (PS1) e PCS
 - Prévia animada do console pré-selecionado: GIF em loop, sem som e **sem iniciar o emulador**. Acompanha mouse, teclado e controle; continua ao retirar o mouse do cartão. A prévia pausa quando a central sai de foco e respeita a opção Reduzir movimento do macOS.
 - Abertura com GIF do console antes de iniciar/focar o emulador.
 - Catálogo por console, capas frontais, navegação por mouse, teclado e controle compatível.
+- **Pastas de jogos**: uma biblioteca independente por console, local ou externa, salva neste Mac. Mantém o SSD original como padrão e permite restaurá-lo sem mover arquivos.
 - Cache local de catálogo e miniaturas, compartilhado com a capa do jogo carregado, para reduzir leituras repetidas do SSD.
 - Catálogos salvos de PS1 e PS2 restaurados ao iniciar, inclusive sem o SSD; aviso visual no estilo console ao tentar jogar offline. O subtítulo é “Playstation Retro Emulator”, sem o rótulo “MENU PRINCIPAL”.
 - Indicador ligado/desligado, tempo desde a abertura do emulador e identificação do jogo carregado quando possível.
 - Miniatura da capa ao lado do jogo carregado no menu principal: 36 px de altura, preservando a proporção de cada console. Usa as mesmas capas do catálogo; se não houver uma correspondência segura, mostra um ícone de disco. A consulta acontece em segundo plano quando o jogo muda, sem reler a biblioteca a cada segundo.
 - Pedido de encerramento normal do emulador, com confirmação; não força o fechamento.
-- Interface compacta, ajustada para MacBook de 14 polegadas, com tela cheia.
+- A interface acompanha o tamanho da janela e da tela em que ela está. No MacBook de 14 polegadas e em outros monitores, maximizar ou usar tela cheia aumenta o menu, a prévia e o catálogo para ocupar a área disponível.
+- O ícone fixado no Dock continua sendo o logo atual depois de encerrar a central. A instalação registra essa cópia e deixa de usar o ícone de backups ou da Lixeira.
+- O botão **PlayStation** do DualSense (PS5) traz a central para a frente e volta ao menu dos consoles. Funciona no catálogo, nas pastas de jogos e com DuckStation ou PCSX2 na frente. Não encerra o emulador nem altera o mapeamento dentro do jogo.
 
 ## Requisitos da central
 
@@ -143,7 +148,7 @@ Para o destino padrão, abra **Aplicativos → PS1-2**, ou execute:
 open /Applications/PS1-2.app
 ```
 
-Se quiser, mantenha o ícone no Dock. Veja [o guia dos emuladores](docs/EMULADORES.md) para configurar BIOS, bibliotecas, controle e primeira execução. No destino padrão, os emuladores ficam em:
+Se quiser, mantenha o ícone no Dock. Depois de instalar, esse ícone permanece o logo atual mesmo com a central encerrada. Veja [o guia dos emuladores](docs/EMULADORES.md) para configurar BIOS, bibliotecas, controle e primeira execução. No destino padrão, os emuladores ficam em:
 
 ```text
 /Applications/DuckStation.app
@@ -166,7 +171,7 @@ O build padrão usa uma pasta temporária local para evitar metadados do Finder/
 
 ## Bibliotecas e capas
 
-A configuração atual utiliza estas pastas, fora do repositório:
+As pastas padrão continuam sendo estas, fora do repositório:
 
 ```text
 /Volumes/Extreme SSD/Emulacao/
@@ -174,7 +179,16 @@ A configuração atual utiliza estas pastas, fora do repositório:
 └── PS2/Jogos/
 ```
 
-O nome do SSD e os caminhos estão definidos em `PS12.swift`, `GameCatalog.swift` e `EmulatorMonitor.swift`. **Ainda não existe uma tela de preferências ou arquivo `.env` para mudá-los.** Para usar outro volume/pasta, ajuste os caminhos nesses três arquivos **antes de executar `install.sh`**; ajuste também os rótulos visuais de `Extreme SSD` em `PS12.swift`, `GameCatalogView.swift` e `StorageNoticeView.swift`. Se já instalou, execute o instalador novamente após editar. Alterar só o nome no README, configurar uma pasta apenas no emulador ou escolher `--destination` não muda a biblioteca da central: essa opção muda somente onde os apps são instalados.
+### Escolher outra pasta, sem editar código
+
+1. Abra **Pastas de jogos** no cabeçalho da central ou do catálogo. Também está no menu **PS1/2 → Pastas de jogos…**, com atalho **⌘,**.
+2. No cartão **PS1** ou **PS2**, clique em **Escolher pasta…**. Selecione qualquer pasta legível no armazenamento interno ou em um disco externo e confirme **Usar esta pasta**. O seletor de arquivos é o nativo do macOS; use mouse/teclado nele.
+3. A central salva a escolha e faz uma carga completa **somente desse console**. Aceita uma pasta por console, incluindo subpastas; não procura automaticamente o Mac inteiro. Escolha a pasta dedicada aos jogos, não a raiz de um disco.
+4. Clique em **Concluir** e abra o catálogo. Depois de adicionar jogos ou capas, pressione **T / △** dentro dele para atualizar.
+
+Cancelar o seletor mantém tudo como estava. **Restaurar padrão** volta à pasta original do `Extreme SSD` e tenta recuperar seu catálogo salvo, inclusive com o disco desconectado; se necessário, atualize com **T / △** quando ele estiver conectado.
+
+As escolhas ficam nas preferências locais do app, separadas para PS1 e PS2, e sobrevivem ao fechamento/reabertura e à atualização do aplicativo. A central não move/copia jogos nem altera BIOS, saves, memory cards ou as configurações dos emuladores. Se quiser a mesma biblioteca listada dentro do DuckStation/PCSX2, configure a pasta também nas preferências deles. `--destination` no instalador muda apenas onde os aplicativos são instalados.
 
 As capas são lidas de `~/Library/Application Support/DuckStation/covers` e `~/Library/Application Support/PCSX2/covers`, com alternativas junto aos jogos. Três capas frontais incluídas em `assets/Covers/PS2` têm prioridade para padronizar a apresentação. Imagens deitadas ou quadradas são rejeitadas no PS2 para evitar capas completas de frente e verso; o filtro não reconhece automaticamente toda arte incorreta.
 
@@ -191,11 +205,15 @@ Se o macOS pedir acesso ao volume externo, escolha **Permitir** para realizar um
 | Voltar/cancelar abertura | Esc | Círculo |
 | Tela cheia/janela | F | Quadrado |
 | Listar jogos do console / atualizar catálogo | T | Triângulo |
+| Voltar ao menu da central | — | Botão PlayStation do DualSense |
+| Configurar pastas de jogos | ⌘, ou botão no cabeçalho | Abra pelo botão; depois direcional/analógico escolhe PS1/PS2, X abre o seletor e Círculo volta |
 | Encerrar a central | ⌘Q | — |
 
 No mouse, passar sobre PS1/PS2 pré-seleciona o console; clicar inicia a abertura. A prévia do console pré-selecionado continua mesmo sem hover e também acompanha as setas do teclado ou controle. É silenciosa, usa os GIFs locais e não faz downloads. O mapeamento do controle dentro dos jogos continua sendo responsabilidade de cada emulador.
 
-O analógico esquerdo seleciona em quatro direções. No menu, cada inclinação troca o console uma vez: solte ao centro antes de repetir na mesma direção. No catálogo, esquerda/direita move um jogo e cima/baixo move uma linha; segurar repete após 450 ms, com intervalo de 140 ms. A zona neutra e a estabilização de diagonais evitam movimentos por pequenas oscilações. Após trocar de tela, usar um botão ou voltar de outro aplicativo, solte o analógico ao centro para rearmar. O analógico direito não navega. A central não captura movimentos em segundo plano nem altera os controles dos emuladores.
+O analógico esquerdo seleciona em quatro direções. No menu, cada inclinação troca o console uma vez: solte ao centro antes de repetir na mesma direção. No catálogo, esquerda/direita move um jogo e cima/baixo move uma linha; segurar repete após 450 ms, com intervalo de 140 ms. A zona neutra e a estabilização de diagonais evitam movimentos por pequenas oscilações. Após trocar de tela, usar um botão ou voltar de outro aplicativo, solte o analógico ao centro para rearmar. O analógico direito não navega.
+
+X, Círculo, Quadrado, Triângulo, direcional e analógico só agem com a central em foco. A exceção é o botão PlayStation do DualSense: ele traz a janela da central para a frente e abre o menu dos consoles, saindo do catálogo, das pastas de jogos ou da abertura. DuckStation e PCSX2 continuam abertos. O mapeamento do controle dentro dos jogos continua sendo responsabilidade de cada emulador. Em alguns sistemas o macOS consome o botão PlayStation e ele não chega ao aplicativo.
 
 ## Sessões e limites
 
@@ -213,10 +231,11 @@ O cache fica em `~/Library/Caches/local.rafael.centraldejogos/`, no armazenament
 
 - `Catalog/`: salva a **última carga completa bem-sucedida**, com títulos, caminhos, capas e associação dos discos CUE/CCD/M3U. Abrir, fechar e reabrir o catálogo apenas reutiliza esse índice, da memória ou do disco local, **sem varrer nem conferir metadados dos jogos no SSD**. Mantém até oito índices em memória e até oito arquivos / 16 MiB em disco (máximo de 4 MiB por arquivo).
 - Ao iniciar a central, ambos os catálogos são restaurados do cache local, mesmo sem o SSD. Se ainda não houver cache salvo, essa restauração não faz uma varredura; será necessário conectar o SSD e abrir/atualizar o catálogo uma primeira vez. Não apague o cache se quiser manter a consulta offline.
-- Uma carga completa acontece na primeira abertura sem cache válido ou ao pressionar **△ / T dentro do catálogo**. Jogos adicionados/removidos e capas substituídas só aparecem após essa atualização. Voltar ao app, conectar ou desconectar o SSD não dispara uma varredura. Se a atualização falhar, a última lista salva continua visível com um aviso.
+- Uma carga completa acontece na primeira abertura sem cache válido, ao confirmar uma pasta diferente ou ao pressionar **△ / T dentro do catálogo**. Jogos adicionados/removidos e capas substituídas só aparecem após essa atualização. Voltar ao app, conectar ou desconectar o SSD não dispara uma varredura. Se a atualização falhar, a última lista salva daquela biblioteca continua visível com um aviso.
+- O índice é separado por **console e caminho da biblioteca**. Mudar de pasta remove imediatamente a lista anterior da tela; uma tarefa antiga não pode recolocá-la. Voltar à biblioteca padrão pode recuperar seu cache, sujeito aos limites acima. Nenhuma escolha apaga arquivos de jogos ou de capas.
 - `Thumbnails/`: miniaturas de 320 px para o catálogo e 108 px para o menu, associadas à mesma carga salva. Os acertos em RAM/disco não consultam a capa original. O catálogo prepara as duas resoluções em segundo plano; se uma miniatura ainda não existir ou tiver sido removida pelo limite do cache, tenta ler apenas a capa correspondente, sem reler os jogos. Sem acesso à capa, mostra um espaço reservado.
 - O cache de capas tem orçamento de 32 MiB de imagens retidas em memória e 64 MiB / 256 arquivos em disco. Views visíveis podem manter imagens adicionais; esse orçamento não é o consumo total do app. A limpeza automática remove apenas arquivos deste cache.
-- Com o SSD desconectado, é possível consultar a última lista e as capas já salvas. **Somente ao escolher “Abrir jogo”** a central verifica o SSD e os arquivos selecionados. Se estiver desconectado, exibe “Conecte o SSD para jogar”, com o título do jogo, sem iniciar o emulador. X/Enter ou Círculo/Esc fecha o aviso e mantém o catálogo. Após reconectar, escolha o jogo novamente: não existe abertura automática. Jogar exige o SSD conectado e o jogo acessível; o cache não contém os jogos. Falhas de arquivos/permissões com o SSD conectado recebem mensagem própria.
+- Com o disco externo desconectado, é possível consultar a última lista e as capas já salvas. **Somente ao escolher “Abrir jogo”** a central valida os arquivos selecionados. Se o volume estiver desconectado, exibe um aviso com seu nome e o título do jogo, sem iniciar o emulador. X/Enter ou Círculo/Esc fecha o aviso e mantém o catálogo. Após reconectar, escolha o jogo novamente: não existe abertura automática. Jogos em uma pasta local não dependem do SSD de outro console. O cache não contém os jogos; arquivos removidos ou sem permissão recebem mensagem própria.
 - Arquivos de cache corrompidos ou indisponíveis são ignorados/recriados. Se precisar limpar manualmente, feche a central e mova apenas essa pasta de cache para o Lixo; nunca apague as pastas de jogos, BIOS ou saves.
 
 Essa otimização é da central e do catálogo: não altera a velocidade/FPS, configurações, saves ou funcionamento interno do DuckStation e do PCSX2.
@@ -236,11 +255,13 @@ bash tests/run-launch-check-tests.sh
 bash tests/run-cache-tests.sh
 bash tests/run-cover-cache-tests.sh
 bash tests/run-installer-tests.sh
+bash tests/run-library-settings-tests.sh
+bash tests/run-responsive-layout-tests.sh
 ```
 
 Esses testes usam fixtures locais e os GIFs incluídos; não precisam baixar jogos ou BIOS, nem iniciam emuladores. As suítes cobrem o monitor de sessões, animações, catálogo, snapshots sem varredura, consulta offline, falha de atualização sem perder a lista salva, validação do jogo escolhido, correspondência exata entre o disco aberto e a capa (incluindo CUE/CCD/M3U) e seis layouts compactos de miniatura. O teste de layout gera uma prévia temporária com dados fictícios para inspeção visual.
 
-Os testes do instalador usam cenários isolados, sem instalar emuladores reais ou substituir aplicativos em `/Applications`. O diagnóstico `bash install.sh --check` pode ser usado para conferir os pré-requisitos da sua máquina antes de instalar.
+Os testes de pastas usam preferências e diretórios temporários: cobrem persistência, validação, restauração offline, isolamento entre consoles/bibliotecas e resultados atrasados de cargas anteriores. Os testes do instalador usam cenários isolados, sem instalar emuladores reais ou substituir aplicativos em `/Applications`. O diagnóstico `bash install.sh --check` pode ser usado para conferir os pré-requisitos da sua máquina antes de instalar.
 
 Opcional, somente na máquina com os emuladores/SSD configurados: inventário de leitura das bibliotecas reais:
 
@@ -271,11 +292,14 @@ As 19 capas, salvas nas duas resoluções (38 miniaturas), ocuparam 3,3 MB no ca
 
 ```text
 PS12.swift                 Menu, janelas, estado e abertura de emuladores
-ControllerInput.swift      Entrada pelo controle
+ResponsiveLayout.swift     Escala da interface conforme a janela e a tela
+ControllerInput.swift      Entrada pelo controle, inclusive o botão PlayStation
 EmulatorMonitor.swift      Monitor de processos e jogo carregado
 GameCatalog.swift          Leitura das bibliotecas e seleção de capas
 GameLaunchCheck.swift      Validação apenas do jogo escolhido e seus arquivos de disco
-StorageNoticeView.swift    Aviso de SSD desconectado com visual inspirado no console
+StorageNoticeView.swift    Aviso de disco desconectado com visual inspirado no console
+LibrarySettings.swift      Pastas PS1/PS2 persistentes e metadados do volume
+LibrarySettingsView.swift  Painel de escolha/restauração das bibliotecas
 CatalogCache.swift         Última carga completa persistente e consultas sem varrer o SSD
 CoverImageCache.swift      Miniaturas compartilhadas com limites de RAM/disco
 GameCatalogView.swift      Interface do catálogo

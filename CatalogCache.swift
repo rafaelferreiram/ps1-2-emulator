@@ -3,7 +3,7 @@ import CryptoKit
 import Darwin
 
 /// Stores the last successful FULL LOAD, never ROM data. Normal browsing reads
-/// only saved memory/JSON, even with the SSD disconnected. Only a first load or
+/// only saved memory/JSON, even with the game folder unavailable. Only a first load or
 /// explicit forced refresh traverses game/artwork folders and rebuilds metadata.
 actor CatalogCache {
     static let shared = CatalogCache()
@@ -190,7 +190,7 @@ actor CatalogCache {
             metrics.fingerprintChecks += 1
             let before: String
             do { before = try fingerprint(source) }
-            catch { return failure("SSD desconectado ou biblioteca sem acesso. Reconecte e atualize o catálogo.") }
+            catch { return failure("Pasta de jogos indisponível ou sem acesso. Verifique o caminho e as permissões; se for um disco externo, reconecte-o e atualize o catálogo.") }
             metrics.scans += 1
             let inventory = CatalogScanner.inventory(source)
             guard inventory.reliable else {
@@ -198,7 +198,7 @@ actor CatalogCache {
             }
             metrics.fingerprintChecks += 1
             guard let after = try? fingerprint(source) else {
-                return failure("A biblioteca ficou indisponível durante a atualização. Reconecte e tente novamente.")
+                return failure("A biblioteca ficou indisponível durante a atualização. Verifique o acesso à pasta e tente novamente.")
             }
             guard before == after else { continue }
             let snapshot = Snapshot(version: version, sourceKey: key, fingerprint: after, inventory: inventory,

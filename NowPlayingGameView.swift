@@ -34,15 +34,18 @@ struct NowPlayingGameView: View {
     let title: String
     let gamePath: String
     var revision: Int = 0
+    var source: CatalogSource? = nil
     @StateObject private var artwork = NowPlayingArtwork()
 
-    private var identity: String { consoleKey + ":" + gamePath + ":" + String(revision) }
+    private var identity: String {
+        consoleKey + ":" + gamePath + ":" + String(revision) + ":" + (source?.root.path ?? "<none>")
+    }
 
     var body: some View {
         NowPlayingGameLabel(consoleKey: consoleKey, title: title, image: artwork.image)
             .help(gamePath)
             .task(id: identity) {
-                await artwork.load(path: gamePath, source: CatalogSource.installed(consoleKey))
+                await artwork.load(path: gamePath, source: source)
             }
     }
 }

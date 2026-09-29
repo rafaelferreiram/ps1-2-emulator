@@ -184,6 +184,56 @@ struct EmulatorMonitorTests {
         check(external([compressed], second: 4).gameTitle == nil, "GZ file follows stabilization rule")
         check(external([compressed], second: 5).gameTitle == "Tarzan", "Stable GZ file is identified")
 
+        // User-selectable libraries are not restricted to the original SSD.
+        // These paths are synthetic: the monitor must classify without a scan.
+        let customRoots = ["/Users/player/Downloads/PS1 Games", "/Volumes/My External Library", "/private/tmp/PS12 Games"]
+        for root in customRoots {
+            let customGame = root + "/Tarzan/Tarzan.bin"
+            let candidates = EmulatorMonitor.testImages(paths: [customGame, root + "-Backup/Other.iso", game], library: root)
+            check(candidates.count == 1 && candidates.first?.path == customGame,
+                  "Custom local/external library recognizes only its own path: \(root)")
+            check(EmulatorMonitor.testImages(paths: [root + "/bios/scph1001.bin", root + "/covers/Fake.iso"], library: root).isEmpty,
+                  "Custom library retains BIOS/artwork exclusions")
+            let custom = EmulatorMonitor(libraries: ["ps1": root])
+            let first = custom.testObserve(library: root, pid: 80, launchedAt: launch, paths: [customGame], now: launch)
+            check(first.gameTitle == nil && first.activityDescription == "Verificando jogo…", "Custom library waits for stability")
+            let stable = custom.testObserve(library: root, pid: 80, launchedAt: launch, paths: [customGame], now: launch.addingTimeInterval(1))
+            check(stable.gameTitle == "Tarzan" && stable.gamePath == customGame, "Custom library game stabilizes")
+        }
+
+        let customRoot = "/Users/player/Games"
+        let nestedRoot = customRoot + "/PS1"
+        let customGame = nestedRoot + "/Tarzan.bin"
+        let retargeted = EmulatorMonitor(libraries: ["ps1": customRoot, "ps2": ps2])
+        func customObserve(_ second: Double, key: String = "ps1", root: String = customRoot,
+                           paths: [String] = [customGame]) -> EmulatorState {
+            retargeted.testObserve(key: key, library: root, pid: key == "ps1" ? 81 : 82,
+                                  launchedAt: launch, paths: paths, now: launch.addingTimeInterval(second))
+        }
+        _ = customObserve(0)
+        check(customObserve(1).gameTitle == "Tarzan", "Initial custom library established before retarget")
+        _ = customObserve(0, key: "ps2", root: ps2, paths: [ps2 + "/FIFA 11.iso"])
+        check(customObserve(1, key: "ps2", root: ps2, paths: [ps2 + "/FIFA 11.iso"]).gameTitle == "FIFA 11",
+              "Second console has independent active observation")
+        retargeted.setLibrary(nestedRoot, for: "ps1")
+        check(customObserve(2, root: nestedRoot).gameTitle == nil,
+              "Changing a library resets observation even when the same disc is inside both roots")
+        check(customObserve(2, key: "ps2", root: ps2, paths: [ps2 + "/FIFA 11.iso"]).gameTitle == "FIFA 11",
+              "PS1 retarget preserves PS2 active observation")
+        check(customObserve(3, root: nestedRoot).gameTitle == "Tarzan", "Retargeted observation stabilizes again")
+        retargeted.setLibrary(nestedRoot, for: "ps1")
+        check(customObserve(3.1, root: nestedRoot).gameTitle == "Tarzan", "No-op folder selection does not reset monitor")
+        retargeted.setLibrary("relative/Games", for: "ps1")
+        retargeted.setLibrary("/Users/player/Other", for: "ps3")
+        check(customObserve(3.2, root: nestedRoot).gameTitle == "Tarzan", "Invalid target updates leave valid observation intact")
+        retargeted.setLibrary("/Volumes/New Disk/PS1", for: "ps1")
+        let outsideAfterSwitch = customObserve(4, root: "/Volumes/New Disk/PS1", paths: [customGame])
+        check(outsideAfterSwitch.gameTitle == nil && outsideAfterSwitch.gamePath == nil,
+              "Previous library title is not carried across to a different root")
+        let outsideISO = customObserve(5, root: "/Volumes/New Disk/PS1", paths: [nestedRoot + "/Tarzan.chd"])
+        check(outsideISO.activityDescription == outsideMessage,
+              "A game still open in the old library remains conservatively busy after folder change")
+
         print("PASS: \(checks) emulator monitor checks")
     }
 }

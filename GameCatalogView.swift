@@ -11,7 +11,7 @@ private final class CatalogCover: ObservableObject {
         requestID = request
         image = nil
         guard let url, let snapshotID, !Task.isCancelled else { return }
-        // 145 pt artwork at Retina resolution; catalog and menu share the cache.
+        // Bounded thumbnails stay shared between catalog and menu at any window size.
         let thumbnail = await CoverImageCache.shared.image(at: url, maxPixelSize: 320, snapshotID: snapshotID)
         guard requestID == request, !Task.isCancelled, let thumbnail else { return }
         image = NSImage(cgImage: thumbnail, size: NSSize(width: thumbnail.width, height: thumbnail.height))
@@ -23,17 +23,25 @@ private struct CoverRequest: Hashable {
     let snapshotID: String?
 }
 
+private struct CatalogViewport: Hashable {
+    let width: CGFloat
+    let height: CGFloat
+    let columns: Int
+}
+
 private struct GameCard: View {
     let game: CatalogGame
     let selected: Bool
     let snapshotID: String?
+    let coverHeight: CGFloat
     let action: () -> Void
     @StateObject private var cover = CatalogCover()
 
-    init(game: CatalogGame, selected: Bool, snapshotID: String?, action: @escaping () -> Void) {
+    init(game: CatalogGame, selected: Bool, snapshotID: String?, coverHeight: CGFloat, action: @escaping () -> Void) {
         self.game = game
         self.selected = selected
         self.snapshotID = snapshotID
+        self.coverHeight = coverHeight
         self.action = action
     }
     private var cardHelp: String {
@@ -54,9 +62,9 @@ private struct GameCard: View {
                         }.foregroundStyle(Theme.ice.opacity(0.5))
                     }
                 }
-                // Keep one front cover, at a stable size and its console's format.
+                // Keep one front cover, at the responsive size and its console's format.
                 // Fit (never stretch or crop) preserves titles and edge artwork.
-                .frame(width: game.consoleKey == "ps2" ? 101.5 : 145, height: 145)
+                .frame(width: game.consoleKey == "ps2" ? coverHeight * 0.7 : coverHeight, height: coverHeight)
                 .clipShape(RoundedRectangle(cornerRadius: 3))
                 .overlay(RoundedRectangle(cornerRadius: 3).stroke(Color.white.opacity(0.10), lineWidth: 0.5))
                 .frame(maxWidth: .infinity)
@@ -81,12 +89,19 @@ private struct GameCard: View {
 
 struct GameCatalogView: View {
     let console: Console
+    let layout: LauncherLayout
     @ObservedObject var model: LauncherModel
     @ObservedObject var catalog: GameCatalog
     private var games: [CatalogGame] { catalog.games[console.rawValue] ?? [] }
     private var loading: Bool { catalog.loading.contains(console.rawValue) }
     private var selection: CatalogGame? { model.selectedGame }
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 16), count: Theme.catalogColumns)
+    private var columns: [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: 16), count: layout.catalogColumns)
+    }
+    private var viewport: CatalogViewport {
+        CatalogViewport(width: layout.canvasSize.width, height: layout.canvasSize.height,
+                        columns: layout.catalogColumns)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -100,9 +115,13 @@ struct GameCatalogView: View {
                     Text("Jogos \(console.badge)").font(.system(size: 25, weight: .regular, design: .rounded)).foregroundStyle(.white)
                 }
                 Spacer()
+                Button { model.showLibrarySettings() } label: {
+                    Label("Pastas de jogos", systemImage: "folder.badge.gearshape")
+                        .font(.system(size: 11)).foregroundStyle(Theme.ice)
+                }.buttonStyle(.plain)
                 VStack(alignment: .trailing, spacing: 5) {
                     Text("\(games.count) jogos · \(console.emulator)").font(.system(size: 13)).foregroundStyle(Theme.pale)
-                    Text(model.storageMounted ? "Última carga completa · △/T atualiza" : "Catálogo offline · Conecte o SSD para jogar")
+                    Text(model.isStorageAvailable(for: console) ? "Última carga completa · △/T atualiza" : "Catálogo offline · Conecte o disco para jogar")
                         .font(.system(size: 10)).tracking(0.3).foregroundStyle(Theme.pale.opacity(0.65))
                 }
             }.padding(.top, 35).padding(.bottom, 22)
@@ -118,7 +137,7 @@ struct GameCatalogView: View {
                 VStack(spacing: 15) {
                     Image(systemName: "externaldrive").font(.system(size: 38, weight: .ultraLight)).foregroundStyle(Theme.ice)
                     Text("Nenhum jogo salvo neste catálogo").font(.system(size: 20, weight: .light))
-                    Text("Conecte o Extreme SSD e use △ ou T para uma carga completa.\nO catálogo mostra a última lista salva; os arquivos são verificados ao abrir o jogo.")
+                    Text("Escolha uma pasta em Pastas de jogos, ou conecte o disco configurado e use △/T.\nO catálogo mostra a última lista salva; os arquivos são verificados ao abrir o jogo.")
                         .font(.system(size: 12)).multilineTextAlignment(.center).foregroundStyle(Theme.pale.opacity(0.6))
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -127,7 +146,8 @@ struct GameCatalogView: View {
                         LazyVGrid(columns: columns, spacing: 16) {
                             ForEach(games) { game in
                                 GameCard(game: game, selected: selection?.id == game.id,
-                                         snapshotID: catalog.snapshotIDs[console.rawValue]) { model.selectGame(game) }
+                                         snapshotID: catalog.snapshotIDs[console.rawValue],
+                                         coverHeight: layout.catalogCoverHeight) { model.selectGame(game) }
                                     .id(game.id)
                             }
                         }.padding(5)
@@ -136,6 +156,13 @@ struct GameCatalogView: View {
                          if let id {
                              withAnimation(.easeOut(duration: model.reduceMotion ? 0 : 0.18)) { proxy.scrollTo(id, anchor: .center) }
                          }
+                     }
+                     .task(id: viewport) {
+                         // Wait for the new grid geometry before scrolling. The
+                         // task is cancelled if another resize supersedes it.
+                         await Task.yield()
+                         guard !Task.isCancelled, let id = selection?.id else { return }
+                         proxy.scrollTo(id, anchor: .center)
                      }
                 }.frame(maxHeight: .infinity)
             }
@@ -162,12 +189,19 @@ struct GameCatalogView: View {
                 Button { model.back() } label: { hint("○", "Consoles", "Esc", Color(red: 0.92, green: 0.49, blue: 0.51)) }
                 Button { model.toggleFullscreen?() } label: { hint("□", model.fullscreen ? "Janela" : "Tela cheia", "F", Color(red: 0.83, green: 0.58, blue: 0.80)) }
                 Button { model.showCatalog() } label: { hint("△", "Atualizar \(console.badge)", "T", Color(red: 0.4, green: 0.9, blue: 0.68)) }.disabled(loading)
+                HStack(spacing: 8) {
+                    Text("PS").font(.system(size: 12, weight: .black)).foregroundStyle(Theme.ice)
+                    Text("Início").font(.system(size: 12)).foregroundStyle(Theme.pale.opacity(0.9))
+                }.help("Botão PlayStation do DualSense volta ao menu da central, mesmo com o emulador na frente")
                 Spacer()
                 Label("Selecionar", systemImage: "arrow.up.and.down.and.arrow.left.and.right").font(.system(size: 11)).foregroundStyle(Theme.pale.opacity(0.5))
                     .help("Setas, direcional ou analógico esquerdo; segure o analógico para percorrer os jogos")
             }.buttonStyle(.plain).padding(.top, 15).padding(.bottom, 24)
-        }.padding(.horizontal, 63).frame(width: 1100, height: 700)
+        }.padding(.horizontal, layout.horizontalPadding)
+         .frame(width: layout.canvasSize.width, height: layout.canvasSize.height)
          .background(Theme.background.opacity(0.92))
+         .onAppear { model.catalogColumns = layout.catalogColumns }
+         .onChange(of: layout.catalogColumns) { _, count in model.catalogColumns = count }
     }
     private func hint(_ symbol: String, _ text: String, _ key: String, _ color: Color) -> some View {
         HStack(spacing: 7) {

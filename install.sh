@@ -133,8 +133,11 @@ if [ -n "$installer_pcsx_download" ]; then
 fi
 if [ -e "$installer_target" ]; then installer_launcher_closed; fi
 installer_publish_app "$installer_stage/PS1-2.app" "$installer_target" local.rafael.centraldejogos yes
+installer_refresh_dock_icon "$installer_target" local.rafael.centraldejogos
 printf '\nInstalação concluída. Não é necessário reiniciar o Mac.\n'
+printf 'O ícone do Dock foi atualizado. O logo atual permanece visível depois de encerrar a central.\n'
 printf 'Abra DuckStation e PCSX2, configure suas BIOS, bibliotecas e controles. Depois abra a central:\n'
 printf 'open "%s"\n' "$installer_target"
-printf 'A central espera /Volumes/Extreme SSD/Emulacao/PS1/Jogos e /Volumes/Extreme SSD/Emulacao/PS2/Jogos.\n'
-printf 'Na primeira máquina, conecte o SSD e use T/△ para carregar o catálogo. Veja README.md e docs/EMULADORES.md.\n'
+printf 'Na central, abra Pastas de jogos (⌘,) e escolha as bibliotecas PS1 e PS2 no Mac ou em um disco externo.\n'
+printf 'O padrão continua /Volumes/Extreme SSD/Emulacao/{PS1,PS2}/Jogos. T/△ abre ou atualiza o catálogo.\n'
+printf 'Forneça suas BIOS e jogos e configure os emuladores. Veja README.md e docs/EMULADORES.md.\n'

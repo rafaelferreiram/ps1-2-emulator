@@ -11,7 +11,7 @@ struct LauncherPreviewTests {
         guard condition() else { fatalError("FAIL: \(description)") }
     }
 
-    static func main() throws {
+    static func main() async throws {
         // Initialize AppKit without running the app delegate, showing a window,
         // or invoking any emulator-launching action.
         _ = NSApplication.shared
@@ -29,7 +29,10 @@ struct LauncherPreviewTests {
             }
             require(selected ? opaquePixels > 100 : opaquePixels == 0, "P1 is visible only for the preselected console")
         }
-        let model = LauncherModel(startServices: false)
+        let suite = "local.ps12.tests.launcher.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let model = LauncherModel(librarySettings: GameLibrarySettings(defaults: defaults), startServices: false)
         require(model.selected == .ps2, "PS2 is initially preselected")
         require(model.previewConsole == nil, "boot hides the preview")
         model.finishBoot()
@@ -134,11 +137,11 @@ struct LauncherPreviewTests {
         try FileManager.default.removeItem(at: disc)
         require(!GameLaunchCheck.isAvailable(disc, library: library), "removal after catalog caching is caught on launch")
         var connected = false
-        let offline = LauncherModel(storageProbe: { connected }, startServices: false)
+        let offline = LauncherModel(librarySettings: GameLibrarySettings(defaults: defaults), storageProbe: { connected }, startServices: false)
         offline.finishBoot()
         require(!offline.storageMounted, "offline startup does not require the SSD")
         for console in Console.allCases {
-            let absent = console.folder.appendingPathComponent("Offline-fixture-does-not-exist.iso")
+            let absent = offline.gameFolder(for: console).appendingPathComponent("Offline-fixture-does-not-exist.iso")
             let game = CatalogGame(id: absent.path, consoleKey: console.rawValue, title: "Jogo de teste", fileURL: absent, coverURL: nil)
             offline.catalogConsole = console
             offline.launchGame(game)
@@ -166,6 +169,81 @@ struct LauncherPreviewTests {
             offline.errorMessage = nil
             connected = false
         }
-        print("PASS: \(assertions) launcher-selection, offline-storage dialog and on-demand file validation assertions")
+        // Exercise the production integration with private preferences/caches.
+        // None of these actions launches an emulator or scans the real SSD.
+        let settings = GameLibrarySettings(defaults: defaults)
+        let cache = CatalogCache(directory: root.appendingPathComponent("Cache"))
+        let catalog = GameCatalog(cache: cache, coverCache: CoverImageCache(directory: root.appendingPathComponent("Covers")))
+        let configurable = LauncherModel(catalog: catalog, librarySettings: settings, startServices: false)
+        configurable.finishBoot()
+        configurable.catalogConsole = .ps2
+        configurable.showLibrarySettings()
+        require(configurable.showingLibrarySettings && configurable.settingsConsole == .ps2,
+                "settings opens for the current catalog console")
+        require(configurable.previewConsole == nil, "settings pauses the decorative preview")
+        configurable.moveVertical(-1)
+        require(configurable.settingsConsole == .ps1 && configurable.selected == .ps2,
+                "settings navigation changes only the folder card")
+        configurable.select(.ps1)
+        configurable.setConsoleHover(.ps1, inside: true)
+        configurable.showCatalog()
+        configurable.launch(.ps1)
+        require(configurable.selected == .ps2 && configurable.catalogConsole == .ps2 && configurable.launching == nil,
+                "settings blocks underlying menu, catalog and launch actions")
+        var requested: [Console] = []
+        configurable.chooseLibraryFolder = { requested.append($0) }
+        configurable.confirm()
+        require(requested == [.ps1], "confirm requests the selected console folder, never a game")
+        configurable.choosingLibraryFolder = true
+        configurable.move(1)
+        configurable.confirm()
+        configurable.back()
+        require(configurable.settingsConsole == .ps1 && requested.count == 1 && configurable.showingLibrarySettings,
+                "native picker suspends background input and dismissal")
+        configurable.choosingLibraryFolder = false
+        configurable.back()
+        require(!configurable.showingLibrarySettings && configurable.catalogConsole == .ps2,
+                "back closes only settings and preserves the catalog")
+        let oldPS1 = configurable.gameFolder(for: .ps1)
+        let oldPS2 = configurable.gameFolder(for: .ps2)
+        configurable.gameSelection = ["ps1": "previous-selection", "ps2": "untouched-selection"]
+        configurable.setGameFolder(root.appendingPathComponent("DoesNotExist"), for: .ps1)
+        require(configurable.librarySettingsError != nil && configurable.gameFolder(for: .ps1) == oldPS1,
+                "invalid folder reports an inline error without changing preferences")
+        // A directory containing only a zero-byte image and an escaping symlink
+        // is deliberately not launched; it is used solely as a scan fixture.
+        configurable.setGameFolder(library, for: .ps1)
+        let chosen = library.resolvingSymlinksInPath().standardizedFileURL
+        require(configurable.gameFolder(for: .ps1) == chosen && catalog.source(for: "ps1")?.root == chosen,
+                "confirmed folder updates both persistence and catalog source")
+        require(configurable.gameFolder(for: .ps2) == oldPS2 && catalog.source(for: "ps2")?.root == oldPS2,
+                "PS1 selection leaves PS2 source unchanged")
+        require(configurable.gameSelection["ps1"] == nil && configurable.gameSelection["ps2"] == "untouched-selection",
+                "selection is cleared only for the changed library")
+        require(configurable.isStorageAvailable(for: .ps1), "local library is not gated by external SSD availability")
+        require(GameLibrarySettings(defaults: defaults).folder(for: "ps1") == chosen,
+                "chosen folder survives settings reconstruction")
+        for _ in 0..<500 where catalog.loading.contains("ps1") {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        require(!catalog.loading.contains("ps1"), "explicit selection completes a full load")
+        let scans = await cache.statistics().scans
+        require(scans == 1, "only the selected console is scanned once")
+        configurable.setGameFolder(library, for: .ps1)
+        require(!catalog.loading.contains("ps1"), "selecting the identical folder does not rescan")
+        configurable.catalogConsole = .ps1
+        let staleGame = CatalogGame(id: oldPS1.path + "/Old.iso", consoleKey: "ps1", title: "Old library",
+                                    fileURL: oldPS1.appendingPathComponent("Old.iso"), coverURL: nil)
+        configurable.launchGame(staleGame)
+        require(configurable.errorMessage != nil && configurable.storageNotice == nil && configurable.launching == nil,
+                "stale old-library launch is rejected against the new local folder")
+        configurable.errorMessage = nil
+        configurable.resetGameFolder(for: .ps1)
+        require(configurable.gameFolder(for: .ps1) == oldPS1 && catalog.source(for: "ps1")?.root == oldPS1,
+                "reset restores original source without requiring SSD access")
+        let resetStats = await cache.statistics()
+        require(resetStats.scans == scans, "reset does not scan the disconnected default folder")
+        require(configurable.launching == nil && configurable.launchID == nil, "folder integration never launches emulators")
+        print("PASS: \(assertions) launcher-selection, folder integration, offline-storage dialog and on-demand file validation assertions")
     }
 }

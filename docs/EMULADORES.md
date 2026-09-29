@@ -69,16 +69,18 @@ Não é necessário formatar o SSD para instalar a central. Mantenha BIOS, memor
 
 ## Pastas e formatos do catálogo
 
-A configuração atual espera:
+As pastas padrão são:
 
 ```text
 /Volumes/Extreme SSD/Emulacao/PS1/Jogos
 /Volumes/Extreme SSD/Emulacao/PS2/Jogos
 ```
 
-Conecte o SSD e permita o acesso ao volume quando o macOS solicitar. Para mudar esses caminhos, veja [Bibliotecas e capas no README](../README.md#bibliotecas-e-capas): os caminhos ainda estão no código Swift e precisam ser ajustados **antes de compilar/instalar**, não somente nas preferências dos emuladores. `--destination` muda o destino dos aplicativos, não a pasta dos jogos. A central lê os arquivos onde estão, sem duplicar sua biblioteca no disco interno.
+Para manter essas pastas, conecte o SSD e permita o acesso quando o macOS solicitar. Para usar outro local, abra **Pastas de jogos** na central (ou **⌘,**) e escolha uma pasta para PS1 e outra para PS2, no Mac ou em qualquer disco externo. A escolha é salva neste Mac e carrega apenas o catálogo daquele console, incluindo subpastas. Não é preciso editar código nem reinstalar. **Restaurar padrão** volta ao caminho original acima, inclusive offline. Veja [Bibliotecas e capas no README](../README.md#bibliotecas-e-capas).
 
-Em uma nova máquina, o cache começa vazio; clonar o Git não importa o catálogo de outro Mac. Com o SSD conectado, selecione PS1 ou PS2 e pressione **T / △** para abrir o catálogo. Dentro do catálogo, pressione **T / △** para atualizar a lista e as capas. Só depois da primeira carga bem-sucedida haverá uma lista local para consulta sem SSD; para jogar, o SSD precisa estar conectado.
+`--destination` muda o destino dos aplicativos, não a pasta dos jogos. A central lê os arquivos onde estão, sem duplicar sua biblioteca, e não altera a biblioteca configurada dentro do DuckStation/PCSX2. Configure também os emuladores se quiser que suas próprias listas usem a mesma pasta.
+
+Em uma nova máquina, o cache começa vazio; clonar o Git não importa o catálogo de outro Mac. Com a pasta acessível, selecione PS1 ou PS2 e pressione **T / △** para abrir o catálogo. Dentro do catálogo, pressione **T / △** para atualizar a lista e as capas. Só depois da primeira carga bem-sucedida haverá uma lista local para consulta offline. Para jogar, os arquivos precisam estar acessíveis; jogos no disco interno não precisam de SSD externo.
 
 | Console | Extensões consideradas pelo catálogo da central |
 |---|---|
@@ -99,7 +101,7 @@ Essa tabela descreve o scanner da central, não uma garantia de compatibilidade 
 - **Falha de download, SHA-256 ou assinatura:** não contorne a verificação. Confira sua conexão, consulte a release oficial e tente novamente; uma mudança no pacote pode exigir atualizar o instalador. Em caso de limite da API do GitHub, aguarde ou faça a instalação manual pela fonte oficial.
 - **“Não encontrei DuckStation/PCSX2”:** confira nomes e caminhos em `/Applications` ou `~/Applications`. Abra cada emulador uma vez pelo Finder; a central prioriza o caminho padrão e também procura o app pelo bundle ID registrado no macOS.
 - **“Lendo jogos e capas…” por muito tempo:** confira se o macOS está aguardando uma resposta ao pedido de acesso ao SSD.
-- **Biblioteca vazia ou desatualizada:** confira se o volume está conectado, se o nome é `Extreme SSD` e se os jogos já foram extraídos para as pastas configuradas. Abra o catálogo e pressione **T / △** para uma carga completa. Em uma máquina nova, não existe cache anterior para mostrar offline.
+- **Biblioteca vazia ou desatualizada:** confira o caminho em **Pastas de jogos**, o acesso ao disco e se os jogos já foram extraídos para essa pasta. Se moveu os jogos ou renomeou o volume, escolha a pasta novamente. Abra o catálogo e pressione **T / △** para uma carga completa. Em uma máquina nova, não existe cache anterior para mostrar offline.
 - **Jogo não inicia diretamente no emulador:** revise BIOS, arquivos do disco e configuração no próprio emulador primeiro. A central não corrige esses problemas.
 - **Controle funciona na central, mas não no jogo:** configure-o separadamente dentro do DuckStation ou PCSX2.
 - **Aviso de segurança inesperado:** confirme a origem do arquivo. Não desative proteções do macOS nem remova avisos de arquivos de origem desconhecida como solução genérica.

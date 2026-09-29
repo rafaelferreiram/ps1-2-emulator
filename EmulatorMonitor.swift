@@ -51,13 +51,24 @@ final class EmulatorMonitor: ObservableObject {
         var sizes: [String: Int64] = [:]
     }
 
-    private let targets = [
+    private var targets = [
         Target(key: "ps1", bundleID: "com.github.stenzek.duckstation",
                library: "/Volumes/Extreme SSD/Emulacao/PS1/Jogos"),
         Target(key: "ps2", bundleID: "net.pcsx2.pcsx2",
                library: "/Volumes/Extreme SSD/Emulacao/PS2/Jogos")
     ]
     private var observations: [String: Observation] = [:]
+
+    init(libraries: [String: String] = [:]) {
+        for (key, library) in libraries { setLibrary(library, for: key) }
+    }
+
+    func setLibrary(_ library: String, for key: String) {
+        guard library.hasPrefix("/"), let index = targets.firstIndex(where: { $0.key == key }),
+              targets[index].library != library else { return }
+        targets[index] = Target(key: key, bundleID: targets[index].bundleID, library: library)
+        observations.removeValue(forKey: key)
+    }
 
     func refresh() {
         var next: [String: EmulatorState] = [:]

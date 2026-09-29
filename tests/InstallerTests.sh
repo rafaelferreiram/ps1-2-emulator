@@ -245,4 +245,15 @@ test_reject 'wrong source cannot replace central' installer_publish_app "$fixtur
 test_equal 'wrong source leaves installed version' "$(installer_plist "$fixture_apps/PS1-2.app/Contents/Info.plist" CFBundleVersion)" 2
 test_reject 'foreign destination app not overwritten' installer_publish_app "$fixture_duck_new" "$fixture_apps/PS1-2.app" com.github.stenzek.duckstation no
 test_ok 'central valid after identity rejection' installer_validate_bundle "$fixture_apps/PS1-2.app" local.rafael.centraldejogos
+fixture_dock_log="$installer_test_stage/dock-icon.log"
+(
+    installer_dock_icon_dry_run=yes
+    installer_bundle_copies() {
+        printf '%s\n' "$fixture_apps/OldCentral.app" "$fixture_apps/PS1-2.app"
+    }
+    installer_refresh_dock_icon "$fixture_apps/PS1-2.app" local.ps12.dock-icon-test
+) > "$fixture_dock_log"
+test_ok 'dock refresh drops the stale copy' /usr/bin/grep -qx "unregister $fixture_apps/OldCentral.app" "$fixture_dock_log"
+test_ok 'dock refresh keeps the installed bundle registered' /usr/bin/grep -qx "register $fixture_apps/PS1-2.app" "$fixture_dock_log"
+test_reject 'dock refresh does not unregister the installed bundle' /usr/bin/grep -q "unregister $fixture_apps/PS1-2.app" "$fixture_dock_log"
 printf 'Installer offline tests: %s checks passed. No network, real apps or user data touched.\n' "$installer_test_checks"
