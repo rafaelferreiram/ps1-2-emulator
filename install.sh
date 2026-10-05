@@ -1,6 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 installer_source="$(cd "$(dirname "$0")" && pwd)"
+if [ ! -f "$installer_source/scripts/source-check.sh" ] || [ ! -r "$installer_source/scripts/source-check.sh" ]; then
+    printf 'ERRO: download incompleto; falta scripts/source-check.sh.\nExtraia o ZIP inteiro e abra Instalar.command dentro da pasta extraída.\nPasta reconhecida: %s\n' "$installer_source" >&2
+    exit 1
+fi
+source "$installer_source/scripts/source-check.sh"
+ps12_source_check "$installer_source"
 source "$installer_source/scripts/installer-lib.sh"
 
 installer_usage() {
@@ -107,7 +113,7 @@ trap 'exit 143' TERM
 installer_stage="$(/usr/bin/mktemp -d /private/tmp/ps12-install.XXXXXX)"
 installer_move_tool="$installer_stage/MoveApp"
 installer_step build 'Preparando e compilando sua central PS1/2'
-/usr/bin/xcrun swiftc -O -module-cache-path "$installer_source/cache" \
+/usr/bin/xcrun swiftc -O -module-cache-path "$installer_stage/module-cache" \
     "$installer_source/scripts/MoveApp.swift" -o "$installer_move_tool" || {
     installer_error 'Não foi possível compilar a ferramenta de instalação. Confira as mensagens das ferramentas Apple acima.'; exit 1;
 }

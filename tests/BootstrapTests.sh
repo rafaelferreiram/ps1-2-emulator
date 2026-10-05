@@ -59,6 +59,10 @@ ps12_bootstrap_install_tools() {
     bootstrap_install_tools_count=$((bootstrap_install_tools_count + 1))
     return "$bootstrap_tools_request_status"
 }
+ps12_bootstrap_check_source() {
+    bootstrap_source_count=$((bootstrap_source_count + 1))
+    return "$bootstrap_source_status"
+}
 ps12_bootstrap_run_install() {
     bootstrap_backend_count=$((bootstrap_backend_count + 1))
     bootstrap_forwarded=("$@")
@@ -87,6 +91,7 @@ bootstrap_reset() {
     bootstrap_interactive=0; bootstrap_answers=(); bootstrap_read_count=0
     bootstrap_ready_results=(0); bootstrap_ready_count=0
     bootstrap_tools_request_status=0; bootstrap_install_tools_count=0
+    bootstrap_source_count=0; bootstrap_source_status=0
     bootstrap_backend_count=0; bootstrap_backend_status=0; bootstrap_forwarded=()
     bootstrap_prepare_count=0; bootstrap_prepare_status=0; bootstrap_prepare_arguments=()
     bootstrap_compile_count=0; bootstrap_compile_status=0; bootstrap_compile_arguments=()
@@ -120,6 +125,13 @@ for bootstrap_case in os root arch old malformed; do
     bootstrap_test_require "unsupported preflight fails: $bootstrap_case" test "$bootstrap_status" -eq 1
     bootstrap_test_require "unsupported preflight has no tools or compile side effects: $bootstrap_case" test "$((bootstrap_ready_count + bootstrap_compile_count + bootstrap_install_tools_count))" -eq 0
 done
+
+bootstrap_reset; bootstrap_source_status=1
+bootstrap_test_capture ps12_bootstrap_main
+bootstrap_test_require 'incomplete source fails before requesting Apple tools' test "$bootstrap_status" -eq 1
+bootstrap_test_require 'incomplete source does not probe tools or compile' test "$((bootstrap_ready_count + bootstrap_compile_count + bootstrap_install_tools_count))" -eq 0
+bootstrap_test_capture ps12_bootstrap_main --check
+bootstrap_test_require 'incomplete CLI source fails before starting backend' test "$bootstrap_backend_count" -eq 0
 
 bootstrap_reset; bootstrap_ready_results=(1); bootstrap_interactive=1
 bootstrap_test_capture ps12_bootstrap_main

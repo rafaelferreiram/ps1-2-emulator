@@ -2,7 +2,19 @@
 
 # These small wrappers use fixed system paths in production. Tests source this
 # file and replace functions; no environment variable can redirect an installer.
-ps12_bootstrap_repository() { (cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P); }
+ps12_bootstrap_repository() {
+    local entry="${BASH_SOURCE[0]}" parent link hops=0
+    # A Finder alias resolves before invocation; a shell symlink needs resolving
+    # here so its neighbours are looked up beside the real script, not the link.
+    while [ -L "$entry" ]; do
+        hops=$((hops + 1))
+        [ "$hops" -le 40 ] || return 1
+        parent="$(cd -- "$(dirname -- "$entry")" && pwd -P)" || return 1
+        link="$(/usr/bin/readlink "$entry")" || return 1
+        case "$link" in /*) entry="$link" ;; *) entry="$parent/$link" ;; esac
+    done
+    (cd -- "$(dirname -- "$entry")" && pwd -P)
+}
 ps12_bootstrap_uname() { /usr/bin/uname "$@"; }
 ps12_bootstrap_uid() { /usr/bin/id -u; }
 ps12_bootstrap_version() { /usr/bin/sw_vers -productVersion; }
@@ -11,6 +23,16 @@ ps12_bootstrap_read() { IFS= read -r "$1"; }
 ps12_bootstrap_run_install() { local source="$1"; shift; /bin/bash "$source/install.sh" "$@"; }
 ps12_bootstrap_make_stage() { /usr/bin/mktemp -d /private/tmp/ps12-setup.XXXXXX; }
 ps12_bootstrap_install_tools() { /usr/bin/xcode-select --install; }
+
+ps12_bootstrap_check_source() {
+    local source="$1"
+    if [ ! -f "$source/scripts/source-check.sh" ] || [ ! -r "$source/scripts/source-check.sh" ]; then
+        printf 'ERRO: falta scripts/source-check.sh.\nPasta reconhecida: %s\nBaixe e extraia o ZIP completo; mantenha Instalar.command dentro da pasta do projeto.\n' "$source" >&2
+        return 1
+    fi
+    source "$source/scripts/source-check.sh" || return 1
+    ps12_source_check "$source"
+}
 
 ps12_bootstrap_tools_ready() {
     local developer_path compiler sdk
@@ -78,11 +100,7 @@ ps12_bootstrap_ensure_tools() {
 
 ps12_bootstrap_prepare_bundle() {
     local source="$1" stage="$2" bundle="$3"
-    [ -f "$source/scripts/SetupWizard.swift" ] && [ -f "$source/scripts/SetupInfo.plist" ] &&
-        [ -f "$source/docs/images/icon.png" ] && [ -f "$source/install.sh" ] || {
-        printf 'O download do projeto está incompleto. Extraia ou clone o repositório inteiro, mantendo suas pastas.\n' >&2
-        return 1
-    }
+    ps12_bootstrap_check_source "$source" || return 1
     /bin/mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources" "$stage/module-cache" || return 1
     /bin/cp "$source/scripts/SetupInfo.plist" "$bundle/Contents/Info.plist" || return 1
     /bin/cp "$source/docs/images/icon.png" "$bundle/Contents/Resources/icon.png" || return 1
@@ -115,12 +133,15 @@ ps12_bootstrap_main() {
     # CLI mode is the backend verbatim, including its exit status. In particular,
     # --check never compiles the assistant or asks to install dependencies.
     if [ "$#" -gt 0 ]; then
+        ps12_bootstrap_check_source "$source" || return 1
         if ps12_bootstrap_run_install "$source" "$@"; then return 0; else status=$?; return "$status"; fi
     fi
     printf '\nPS1/2 — Assistente de instalação\n'
     printf 'Vamos abrir uma janela para revisar o plano antes de instalar qualquer app.\n'
     printf 'BIOS, jogos e saves não serão baixados nem alterados.\n'
     ps12_bootstrap_preflight || return 1
+    ps12_bootstrap_check_source "$source" || return 1
+    printf 'Pasta do instalador: %s\n' "$source"
     ps12_bootstrap_ensure_tools || return 1
     stage="$(ps12_bootstrap_make_stage)" || { printf 'Não foi possível criar a pasta temporária.\n' >&2; return 1; }
     case "$stage" in /private/tmp/ps12-setup.??????) ;; *) printf 'Pasta temporária inesperada: %s\n' "$stage" >&2; return 1 ;; esac

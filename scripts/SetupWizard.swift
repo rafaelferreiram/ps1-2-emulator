@@ -8,6 +8,30 @@ enum SetupCommand {
     }
 }
 
+enum SetupDestination {
+    static let system = URL(fileURLWithPath: "/Applications", isDirectory: true)
+
+    static func candidates(home: URL) -> [URL] {
+        [system, home.appendingPathComponent("Applications", isDirectory: true)]
+    }
+
+    // Read-only: a missing personal Applications folder is created only by the
+    // user in the native folder chooser, never by startup or preflight.
+    static func isWritableDirectory(_ url: URL) -> Bool {
+        var isDirectory: ObjCBool = false
+        return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
+            && isDirectory.boolValue && FileManager.default.isWritableFile(atPath: url.path)
+    }
+
+    static func preferred(candidates: [URL], canUse: (URL) -> Bool) -> URL {
+        candidates.first(where: canUse) ?? system
+    }
+
+    static func chooserDirectory(destination: URL, home: URL, canUse: (URL) -> Bool) -> URL {
+        canUse(destination) ? destination : home
+    }
+}
+
 enum SetupStep: String, CaseIterable {
     case preflight, build, downloadPS1 = "download-ps1", downloadPS2 = "download-ps2", install, complete
     var title: String {
@@ -80,20 +104,28 @@ final class SetupModel: ObservableObject {
     @Published private(set) var status = "Conferindo os requisitos do Mac…"
     @Published var notice: String?
     @Published var showLog = false
-    @Published private(set) var destination = URL(fileURLWithPath: "/Applications", isDirectory: true)
+    @Published private(set) var destination: URL
     let source: URL
     let preview: Bool
+    private let canUseDestination: (URL) -> Bool
     private var process: Process?
     private(set) var exitCode: Int32 = 0
 
-    init(source: URL, preview: Bool) {
+    init(source: URL, preview: Bool,
+         destinationCandidates: [URL] = SetupDestination.candidates(home: FileManager.default.homeDirectoryForCurrentUser),
+         canUseDestination: @escaping (URL) -> Bool = SetupDestination.isWritableDirectory) {
         self.source = source
         self.preview = preview
+        self.canUseDestination = canUseDestination
+        self.destination = SetupDestination.preferred(candidates: destinationCandidates, canUse: canUseDestination)
         if preview { phase = .ready; status = "Prévia visual · nenhuma instalação será executada." }
     }
     var isInstalling: Bool { phase == .installing }
     var isBusy: Bool { phase == .installing || phase == .checking }
     var canInstall: Bool { phase == .ready && !preview }
+    var destinationGuidance: String? {
+        canUseDestination(destination) ? nil : "Esta pasta não está disponível para instalação. Em Escolher pasta, selecione uma pasta com permissão de escrita ou crie Applications dentro da sua pasta pessoal."
+    }
 
     func preflight() {
         guard !preview, !isInstalling, process == nil else { return }
@@ -107,13 +139,14 @@ final class SetupModel: ObservableObject {
         guard !isBusy, phase != .complete, !preview else { return }
         let panel = NSOpenPanel()
         panel.title = "Onde instalar os aplicativos?"
-        panel.message = "Escolha uma pasta de aplicativos existente e com permissão de escrita."
+        panel.message = "Escolha uma pasta com permissão de escrita. Você também pode criar Applications dentro da sua pasta pessoal usando Nova Pasta."
         panel.prompt = "Usar esta pasta"
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
-        panel.canCreateDirectories = false
+        panel.canCreateDirectories = true
         panel.allowsMultipleSelection = false
-        panel.directoryURL = destination
+        panel.directoryURL = SetupDestination.chooserDirectory(destination: destination,
+            home: FileManager.default.homeDirectoryForCurrentUser, canUse: canUseDestination)
         guard panel.runModal() == .OK, let url = panel.url else { return }
         destination = url.standardizedFileURL
         preflight()
@@ -362,6 +395,9 @@ struct SetupView: View {
             VStack(alignment: .leading, spacing: 5) {
                 Text("DESTINO DOS APLICATIVOS").font(.system(size: 9, weight: .semibold)).tracking(1.5).foregroundStyle(muted)
                 Text(model.destination.path).font(.system(size: 12, design: .monospaced)).lineLimit(1).truncationMode(.middle).help(model.destination.path)
+                if let guidance = model.destinationGuidance {
+                    Text(guidance).font(.system(size: 11)).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                }
             }
             Spacer(minLength: 8)
             Button("Escolher pasta…") { model.chooseDestination() }.buttonStyle(SetupButtonStyle()).disabled(model.isBusy || model.preview).opacity(model.isBusy || model.preview ? 0.5 : 1)

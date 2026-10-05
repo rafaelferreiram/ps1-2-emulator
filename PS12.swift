@@ -22,9 +22,39 @@ enum Console: String, CaseIterable, Identifiable {
     var asset: String { self == .ps1 ? "PS1Controller" : "PS2Controller" }
     var bundleID: String { self == .ps1 ? "com.github.stenzek.duckstation" : "net.pcsx2.pcsx2" }
     var applicationURL: URL? {
-        let standard = URL(fileURLWithPath: "/Applications/\(emulator).app", isDirectory: true)
-        if FileManager.default.fileExists(atPath: standard.path) { return standard }
-        return NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)
+        EmulatorApplicationLookup.find(for: self)
+    }
+}
+
+enum EmulatorApplicationLookup {
+    static func find(for console: Console,
+                     launcherBundleURL: URL = Bundle.main.bundleURL,
+                     systemApplicationsDirectory: URL = URL(fileURLWithPath: "/Applications", isDirectory: true),
+                     homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
+                     registeredApplication: (String) -> URL? = { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }) -> URL? {
+        let appName = "\(console.emulator).app"
+        var directories: [URL] = []
+        // The installer can place all three apps in a user-selected folder.
+        if launcherBundleURL.isFileURL && launcherBundleURL.pathExtension.lowercased() == "app" {
+            directories.append(launcherBundleURL.deletingLastPathComponent())
+        }
+        directories.append(systemApplicationsDirectory)
+        directories.append(homeDirectory.appendingPathComponent("Applications", isDirectory: true))
+        for directory in directories {
+            let candidate = directory.appendingPathComponent(appName, isDirectory: true)
+            if isValid(candidate, for: console) { return candidate }
+        }
+        guard let registered = registeredApplication(console.bundleID), isValid(registered, for: console) else { return nil }
+        return registered
+    }
+
+    private static func isValid(_ url: URL, for console: Console) -> Bool {
+        guard url.isFileURL, url.pathExtension.lowercased() == "app",
+              let bundle = Bundle(url: url), bundle.bundleIdentifier == console.bundleID,
+              let executable = bundle.executableURL else { return false }
+        var isDirectory: ObjCBool = false
+        return FileManager.default.fileExists(atPath: executable.path, isDirectory: &isDirectory)
+            && !isDirectory.boolValue && FileManager.default.isExecutableFile(atPath: executable.path)
     }
 }
 
@@ -1929,7 +1959,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func showAbout() {
         let alert = NSAlert()
         alert.messageText = "PS1/2"
-        alert.informativeText = "Versão 5.0 · PlayStation Retro Emulator\n\n× entra na biblioteca e inicia o jogo. ○ volta, □ alterna tela cheia e △ abre ou atualiza o catálogo. S abre as opções da sessão.\n\nFavoritos, recentes, busca e densidade ficam na biblioteca. Em Experiência, escolha a animação de início, os sons e o movimento. Sons originais, opcionais e desligados por padrão.\n\nEscolha as pastas em PS1/2 → Pastas dos jogos (⌘,). O catálogo e as capas em cache funcionam offline; para jogar, conecte o disco. Jogos, BIOS, saves e configurações dos emuladores não são movidos.\n\nDuckStation e PCSX2 continuam sendo aplicativos independentes. A central inicia jogos em tela cheia e acompanha as sessões que abriu; não salva nem restaura progresso.\n\nLogo: fornecido pelo usuário. Fotos: Evan-Amos / Wikimedia, domínio público. GIFs: Tenor. Créditos completos no pacote. Sem vínculo oficial com Sony."
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "5.0.1"
+        alert.informativeText = "Versão \(version) · PlayStation Retro Emulator\n\n× entra na biblioteca e inicia o jogo. ○ volta, □ alterna tela cheia e △ abre ou atualiza o catálogo. S abre as opções da sessão.\n\nFavoritos, recentes, busca e densidade ficam na biblioteca. Em Experiência, escolha a animação de início, os sons e o movimento. Sons originais, opcionais e desligados por padrão.\n\nEscolha as pastas em PS1/2 → Pastas dos jogos (⌘,). O catálogo e as capas em cache funcionam offline; para jogar, conecte o disco. Jogos, BIOS, saves e configurações dos emuladores não são movidos.\n\nDuckStation e PCSX2 continuam sendo aplicativos independentes. A central inicia jogos em tela cheia e acompanha as sessões que abriu; não salva nem restaura progresso.\n\nLogo: fornecido pelo usuário. Fotos: Evan-Amos / Wikimedia, domínio público. GIFs: Tenor. Créditos completos no pacote. Sem vínculo oficial com Sony."
         alert.icon = Theme.images["Logo"]
         alert.addButton(withTitle: "OK")
         alert.runModal()

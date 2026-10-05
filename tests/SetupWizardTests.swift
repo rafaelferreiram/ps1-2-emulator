@@ -10,6 +10,20 @@ struct SetupWizardTests {
         }
         let source = URL(fileURLWithPath: "/tmp/a project; echo test")
         let destination = URL(fileURLWithPath: "/tmp/Apps $literal")
+        let fixtureHome = URL(fileURLWithPath: "/fixture/home with spaces", isDirectory: true)
+        let personalApplications = fixtureHome.appendingPathComponent("Applications", isDirectory: true)
+        let candidates = SetupDestination.candidates(home: fixtureHome)
+        expect(candidates == [SetupDestination.system, personalApplications], "Default candidates prefer system Applications, then the current user's Applications")
+        expect(SetupDestination.preferred(candidates: candidates, canUse: { _ in true }) == SetupDestination.system, "Writable system Applications has priority")
+        expect(SetupDestination.preferred(candidates: candidates, canUse: { $0 == personalApplications }) == personalApplications, "Writable existing personal Applications is used when system Applications is unavailable")
+        expect(SetupDestination.preferred(candidates: candidates, canUse: { _ in false }) == SetupDestination.system, "Unavailable or missing destinations keep system path for explicit guidance")
+        expect(SetupDestination.preferred(candidates: [], canUse: { _ in true }) == SetupDestination.system, "Empty candidate list has a stable fallback")
+        expect(SetupDestination.chooserDirectory(destination: personalApplications, home: fixtureHome, canUse: { _ in true }) == personalApplications, "Chooser starts at an accessible destination")
+        expect(SetupDestination.chooserDirectory(destination: SetupDestination.system, home: fixtureHome, canUse: { _ in false }) == fixtureHome, "Chooser starts in home when the selected destination is unavailable")
+        let unavailable = SetupModel(source: source, preview: true, destinationCandidates: candidates, canUseDestination: { _ in false })
+        expect(unavailable.destination == SetupDestination.system && unavailable.destinationGuidance?.contains("crie Applications") == true, "Missing writable destination is accompanied by actionable guidance")
+        let personal = SetupModel(source: source, preview: true, destinationCandidates: candidates, canUseDestination: { $0 == personalApplications })
+        expect(personal.destination == personalApplications && personal.destinationGuidance == nil, "A usable personal destination requires no warning")
         expect(SetupCommand.arguments(source: source, destination: destination, check: true) == ["/tmp/a project; echo test/install.sh", "--check", "--destination", "/tmp/Apps $literal"], "Check arguments stay literal")
         expect(SetupCommand.arguments(source: source, destination: destination, check: false)[1] == "--yes", "Install requires affirmative backend argument")
         expect(SetupStep.marker(in: "PS12_STEP:download-ps1:Downloading: 12%")?.0 == .downloadPS1, "Known progress step")
@@ -36,6 +50,16 @@ struct SetupWizardTests {
         let fixtureRoot = FileManager.default.temporaryDirectory.appendingPathComponent("PS12SetupTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: fixtureRoot, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+        let absentDestination = fixtureRoot.appendingPathComponent("Applications", isDirectory: true)
+        let fileDestination = fixtureRoot.appendingPathComponent("not-a-directory")
+        try Data().write(to: fileDestination)
+        expect(SetupDestination.isWritableDirectory(fixtureRoot), "Existing writable fixture directory is usable")
+        expect(!SetupDestination.isWritableDirectory(fileDestination), "Writable files cannot be installation destinations")
+        expect(!SetupDestination.isWritableDirectory(absentDestination), "Missing destination is rejected")
+        expect(!FileManager.default.fileExists(atPath: absentDestination.path), "Checking a missing destination does not create it")
+        func makeModel(source: URL, preview: Bool) -> SetupModel {
+            SetupModel(source: source, preview: preview, destinationCandidates: [destination], canUseDestination: { $0 == destination })
+        }
         let backend = #"""
         #!/bin/bash
         set -euo pipefail
@@ -84,7 +108,7 @@ struct SetupWizardTests {
 
         let successSource = try makeFixture("source with spaces $literal; punctuation")
         try Data().write(to: successSource.appendingPathComponent("flood"))
-        let success = SetupModel(source: successSource, preview: false)
+        let success = makeModel(source: successSource, preview: false)
         expect(success.phase == .checking && !success.canInstall, "Real model initially awaits preflight")
         success.install()
         expect(runCount(successSource) == 0, "Installation before successful preflight does nothing")
@@ -95,7 +119,7 @@ struct SetupWizardTests {
         expect(preflightFinished, "Asynchronous preflight drains a large combined pipe within timeout")
         expect(success.phase == .ready && success.canInstall, "Successful preflight enables explicit installation")
         expect(runCount(successSource) == 1, "Duplicate preflight and premature install cannot start extra processes")
-        expect(invocations(successSource).contains("ARG:--check\nARG:--destination\nARG:/Applications\n"), "Backend receives exact check/destination arguments")
+        expect(invocations(successSource).contains("ARG:--check\nARG:--destination\nARG:/tmp/Apps $literal\n"), "Backend receives exact check/destination arguments")
         expect(success.log.text.utf8.count <= SetupLog.limit, "Large streamed preflight log stays bounded")
         expect(success.log.text.hasPrefix("[As linhas mais antigas"), "Stream truncation is visible to user")
         expect(success.log.text.contains("fixture stdout 4999") && success.log.text.contains("fixture stderr 4999"), "Both output streams are drained")
@@ -108,13 +132,13 @@ struct SetupWizardTests {
         expect(installationFinished, "Explicit fixture installation finishes asynchronously")
         expect(success.phase == .complete && success.step == .complete, "Explicit install moves to complete")
         expect(runCount(successSource) == 2, "Duplicate install and preflight are guarded during installation")
-        expect(invocations(successSource).contains("ARG:--yes\nARG:--destination\nARG:/Applications\n"), "Only explicit install sends affirmative backend argument")
+        expect(invocations(successSource).contains("ARG:--yes\nARG:--destination\nARG:/tmp/Apps $literal\n"), "Only explicit install sends affirmative backend argument")
         expect(success.log.text.hasSuffix("PS12_STEP:complete:fixture installation finished without newline\n"), "Final progress marker without LF is drained")
         expect(success.log.text.utf8.count <= SetupLog.limit && success.exitCode == 0, "Completed large-output install remains bounded and successful")
 
         let failureSource = try makeFixture("retry fixture")
         try Data().write(to: failureSource.appendingPathComponent("fail-check"))
-        let retry = SetupModel(source: failureSource, preview: false)
+        let retry = makeModel(source: failureSource, preview: false)
         retry.preflight()
         let failureFinished = await waitUntil { !retry.isBusy }
         expect(failureFinished && retry.phase == .failed, "Failed preflight becomes failed")
@@ -135,13 +159,13 @@ struct SetupWizardTests {
         expect(!retry.canInstall && runCount(failureSource) == 3, "Install failure requires another preflight before retry")
 
         let previewSource = try makeFixture("preview fixture")
-        let preview = SetupModel(source: previewSource, preview: true)
+        let preview = makeModel(source: previewSource, preview: true)
         preview.preflight()
         preview.install()
         try await Task.sleep(nanoseconds: 50_000_000)
         expect(preview.phase == .ready && !preview.canInstall, "Preview stays non-installable")
         expect(runCount(previewSource) == 0 && preview.log.text.isEmpty, "Preview never invokes backend")
-        let missing = SetupModel(source: fixtureRoot.appendingPathComponent("missing"), preview: false)
+        let missing = makeModel(source: fixtureRoot.appendingPathComponent("missing"), preview: false)
         missing.preflight()
         expect(missing.phase == .failed && missing.exitCode == 1 && missing.notice != nil, "Missing repository fails without a process")
         print("SetupWizardTests: \(count) checks passed")

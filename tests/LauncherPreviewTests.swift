@@ -11,6 +11,82 @@ struct LauncherPreviewTests {
         guard condition() else { fatalError("FAIL: \(description)") }
     }
 
+    static func verifyEmulatorLookup(root: URL) throws {
+        let fm = FileManager.default
+        func layout(_ name: String) -> (launcher: URL, system: URL, home: URL) {
+            let base = root.appendingPathComponent(name, isDirectory: true)
+            return (base.appendingPathComponent("External Disk/My Games/PS1-2.app", isDirectory: true),
+                    base.appendingPathComponent("System Applications", isDirectory: true),
+                    base.appendingPathComponent("Users/Another Person", isDirectory: true))
+        }
+        func makeApp(_ directory: URL, console: Console, bundleID: String? = nil,
+                     name: String? = nil, executable: Bool = true, mode: Int = 0o755,
+                     executableDirectory: Bool = false) throws -> URL {
+            let app = directory.appendingPathComponent(name ?? "\(console.emulator).app", isDirectory: true)
+            let macOS = app.appendingPathComponent("Contents/MacOS", isDirectory: true)
+            try fm.createDirectory(at: macOS, withIntermediateDirectories: true)
+            let info: [String: Any] = ["CFBundleIdentifier": bundleID ?? console.bundleID,
+                                       "CFBundleExecutable": "EmulatorFixture", "CFBundlePackageType": "APPL"]
+            try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
+                .write(to: app.appendingPathComponent("Contents/Info.plist"))
+            let binary = macOS.appendingPathComponent("EmulatorFixture")
+            if executableDirectory {
+                try fm.createDirectory(at: binary, withIntermediateDirectories: false)
+            } else if executable {
+                try Data("#!/bin/sh\nexit 1\n".utf8).write(to: binary)
+                try fm.setAttributes([.posixPermissions: mode], ofItemAtPath: binary.path)
+            }
+            return app
+        }
+        func find(_ console: Console, _ paths: (launcher: URL, system: URL, home: URL),
+                  fallback: (String) -> URL? = { _ in nil }) -> URL? {
+            EmulatorApplicationLookup.find(for: console, launcherBundleURL: paths.launcher,
+                systemApplicationsDirectory: paths.system, homeDirectory: paths.home, registeredApplication: fallback)
+        }
+        for console in Console.allCases {
+            let adjacent = layout("\(console.rawValue)-adjacent")
+            let sibling = try makeApp(adjacent.launcher.deletingLastPathComponent(), console: console)
+            _ = try makeApp(adjacent.system, console: console)
+            _ = try makeApp(adjacent.home.appendingPathComponent("Applications"), console: console)
+            var requestedIDs: [String] = []
+            require(find(console, adjacent) { requestedIDs.append($0); return nil } == sibling,
+                    "\(console.badge) prefers the emulator beside a central installed in any folder")
+            require(requestedIDs.isEmpty, "local emulator lookup does not need LaunchServices registration")
+
+            let standard = layout("\(console.rawValue)-system")
+            let system = try makeApp(standard.system, console: console)
+            _ = try makeApp(standard.home.appendingPathComponent("Applications"), console: console)
+            require(find(console, standard) == system, "system Applications precedes user Applications")
+
+            let personal = layout("\(console.rawValue)-personal")
+            let user = try makeApp(personal.home.appendingPathComponent("Applications"), console: console)
+            require(find(console, personal) == user, "user Applications uses the supplied home, including spaces")
+
+            let wrongName = layout("\(console.rawValue)-wrong-identity")
+            _ = try makeApp(wrongName.launcher.deletingLastPathComponent(), console: console, bundleID: "example.unrelated")
+            let correct = try makeApp(wrongName.system, console: console)
+            require(find(console, wrongName) == correct, "an unrelated app with the emulator's filename is skipped")
+
+            let unusable = layout("\(console.rawValue)-unusable")
+            _ = try makeApp(unusable.launcher.deletingLastPathComponent(), console: console, executable: false)
+            _ = try makeApp(unusable.system, console: console, mode: 0o644)
+            _ = try makeApp(unusable.home.appendingPathComponent("Applications"), console: console, executableDirectory: true)
+            let registered = try makeApp(root.appendingPathComponent("\(console.rawValue)-registered"), console: console,
+                                         name: "My Emulator.app")
+            require(find(console, unusable) { requestedIDs.append($0); return registered } == registered,
+                    "missing, non-executable and directory executables fall back to a valid registered app")
+            require(requestedIDs == [console.bundleID], "registration fallback requests the exact emulator identity")
+
+            let wrongRegistration = try makeApp(root.appendingPathComponent("\(console.rawValue)-wrong-registration"),
+                                                console: console, bundleID: "example.unrelated")
+            require(find(console, unusable) { _ in wrongRegistration } == nil,
+                    "LaunchServices fallback must also match the emulator bundle ID")
+            require(find(console, unusable) == nil, "missing usable emulators return nil")
+            require(find(console, unusable) { _ in URL(string: "https://example.com/\(console.emulator).app") } == nil,
+                    "registered applications must be local file URLs")
+        }
+    }
+
     static func main() async throws {
         // Initialize AppKit without running the app delegate, showing a window,
         // or invoking any emulator-launching action.
@@ -116,6 +192,7 @@ struct LauncherPreviewTests {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("PS12-launch-check-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
+        try verifyEmulatorLookup(root: root.appendingPathComponent("Emulator lookup fixtures", isDirectory: true))
         let library = root.appendingPathComponent("Games")
         try FileManager.default.createDirectory(at: library, withIntermediateDirectories: true)
         let disc = library.appendingPathComponent("Game.iso")
@@ -388,6 +465,6 @@ struct LauncherPreviewTests {
             }
             print("UI previews: \(output.path)")
         }
-        print("PASS: \(assertions) launcher-selection, folder integration, offline-storage dialog and on-demand file validation assertions")
+        print("PASS: \(assertions) launcher-selection, portable emulator lookup, folder integration, offline-storage dialog and on-demand file validation assertions")
     }
 }

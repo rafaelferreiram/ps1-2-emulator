@@ -17,7 +17,7 @@
   <a href="#full-guide">Full guide</a>
 </p>
 
-<p align="center"><strong>Version 5.0 · build 26</strong> · Apple Silicon Mac · macOS 14 or later</p>
+<p align="center"><strong>Version 5.0.1 · build 27</strong> · Apple Silicon Mac · macOS 14 or later</p>
 
 <p align="center">
   <img src="docs/images/menu.png" width="920" alt="Main menu: PlayStation 2 selected, with preview, controls and DualSense">
@@ -26,6 +26,17 @@
 **PS1/2** is the app you open day to day. It shows both consoles, the preview, the catalog with covers, and the shortcut to play. The game itself runs in [DuckStation](https://www.duckstation.org/) (PS1) and [PCSX2](https://pcsx2.net/) (PS2). The installer puts the launcher in Applications and downloads those official emulators if they are not already on the Mac.
 
 You bring the games and the BIOS. They stay in the folder you choose, on the Mac or on an external disk.
+
+## Instalação portátil — versão 5.0.1
+
+O instalador usa a localização real do arquivo, não o nome de usuário ou uma pasta fixa de outro Mac. Funciona com a pasta extraída em Downloads, Mesa ou outro local legível, inclusive nomes com espaços e acentos. A pasta deve permanecer no mesmo lugar até concluir a instalação.
+
+- Confere os arquivos necessários do ZIP antes de pedir as ferramentas da Apple ou compilar. Se algo faltar, informa o arquivo e como extrair novamente.
+- Compila em uma pasta temporária própria, sem precisar gravar na pasta do código baixado.
+- No assistente, prefere `/Applications` se estiver gravável; senão usa `~/Applications` se essa pasta já existir e estiver gravável. O seletor também permite criar uma pasta pessoal com **Nova Pasta**, sem comandos de Terminal.
+- A central instalada procura os emuladores ao lado dela, em `/Applications`, na pasta Applications do usuário e, por último, entre os apps registrados no macOS. Confere a identidade e a presença do executável.
+
+Isso não remove as confirmações do macOS: este projeto ainda **não distribui um instalador assinado com Developer ID e notarizado pela Apple**. Veja o aviso de segurança no passo 2 abaixo.
 
 ## Novidades da versão 5.0
 
@@ -66,12 +77,12 @@ The three covers are a sample included in the project, so the catalog can look l
 
 ### Comece aqui — sem precisar saber programar
 
-Você precisa de um **Mac Apple Silicon (M1 ou mais novo), macOS 14 ou mais novo e internet para a instalação**. Este repositório é privado: sua conta do GitHub precisa ter acesso.
+Você precisa de um **Mac Apple Silicon (M1 ou mais novo), macOS 14 ou mais novo e internet para a instalação**. O repositório é público; não precisa de uma conta do GitHub para baixar o ZIP.
 
 1. No GitHub, clique em **Code → Download ZIP** e descompacte o arquivo no Finder.
-2. Abra a pasta extraída e dê dois cliques em **Instalar.command**. Não mova esse arquivo para fora da pasta do projeto.
+2. Abra a pasta extraída e dê dois cliques em **Instalar.command**. Não mova esse arquivo para fora da pasta do projeto. **Se aparecer “Apple could not verify…”**, o arquivo ainda não foi verificado pela Apple. Somente se você tiver baixado deste repositório e confiar na cópia, use **System Settings → Privacy & Security → Open Anyway / Abrir Mesmo Assim** para esse arquivo e confirme pessoalmente. Não desative o Gatekeeper. [Orientação oficial da Apple](https://support.apple.com/pt-pt/102445).
 3. Na primeira vez, se faltarem as ferramentas de compilação da Apple, o Terminal explica o motivo e oferece abrir o instalador oficial. Confirme somente se concordar, conclua a instalação do macOS e volte ao Terminal para continuar. Não precisa instalar Homebrew nem o Xcode completo.
-4. Na janela **PS1/2 · Instalação**, confira a verificação do Mac e o destino (normalmente **Aplicativos / Applications**). Clique em **Instalar** e acompanhe as etapas. O assistente compila e instala a central, baixa **DuckStation para PS1** e **PCSX2 para PS2** se faltarem, e verifica os downloads.
+4. Na janela **PS1/2 · Instalação**, confira a verificação do Mac e o destino (normalmente **Aplicativos / Applications**). Se precisar, use **Escolher pasta…**; o seletor permite **Nova Pasta** para criar Applications dentro da sua pasta pessoal. Clique em **Instalar** e acompanhe as etapas. O assistente compila e instala a central, baixa **DuckStation para PS1** e **PCSX2 para PS2** se faltarem, e verifica os downloads.
 5. Na tela de conclusão, use os botões para abrir os emuladores e terminar a primeira configuração. Depois abra a central, escolha as **Pastas de jogos**, selecione o console e pressione **Enter / ×** para entrar na biblioteca.
 
 **O que não vem junto:** jogos, BIOS e saves. Você precisa fornecer seus próprios arquivos autorizados, configurar a BIOS e o controle em cada emulador e testar um jogo. Se o macOS pedir Rosetta ou mostrar um aviso de segurança, leia e confirme pessoalmente — o assistente não aceita licenças nem contorna proteções. O visual é inspirado nos consoles; não é um sistema operacional da Sony.
@@ -86,7 +97,9 @@ cd ps1-2-emulator
 bash Instalar.command
 ```
 
-Se o duplo clique não executar o arquivo, abra o Terminal na pasta extraída e use `bash Instalar.command`. Para uma instalação somente por texto, use `bash install.sh`. Para apenas verificar os requisitos, sem baixar, compilar ou instalar nada, use `bash install.sh --check`. Veja as opções e a solução de problemas no [guia completo](#full-guide).
+**Se aparecer “No such file or directory”:** não copie caminhos como `/Users/nome-de-outra-pessoa/...`. Volte à pasta completa extraída no Finder e abra o arquivo dali. Se preferir o Terminal, digite `bash` seguido de um espaço, arraste o **Instalar.command real** dessa pasta para o Terminal e pressione Enter; o Finder insere o caminho correto, inclusive os espaços. Faça isso somente para a cópia do projeto em que você confia, não como solução genérica para arquivos desconhecidos. Se o instalador disser que faltam arquivos, baixe e extraia novamente o ZIP inteiro.
+
+Para uma instalação somente por texto, abra o Terminal na pasta extraída e use `bash install.sh`. Para apenas verificar os requisitos, sem baixar, compilar ou instalar nada, use `bash install.sh --check`. Veja as opções no [guia completo](#full-guide).
 
 ## In short
 
@@ -115,13 +128,13 @@ Se o duplo clique não executar o arquivo, abra o Terminal na pasta extraída e 
 
 ## Full guide
 
-The repository is named `ps1-2-emulator`. The app is named **PS1/2** and the installed file is `PS1-2.app`, because `/` is a folder separator on macOS. Current version: **5.0, build 26**.
+The repository is named `ps1-2-emulator`. The app is named **PS1/2** and the installed file is `PS1-2.app`, because `/` is a folder separator on macOS. Current version: **5.0.1, build 27**.
 
 ## Start here: clone, install and open
 
 O caminho recomendado é o assistente gráfico, aberto por **Instalar.command**. Ele usa o mesmo instalador verificável da linha de comando, mas organiza as ações em telas com visual azul inspirado no PS2. A interface usa mouse/teclado e não exige que um controle já esteja configurado.
 
-Em um **Mac Apple Silicon com macOS 14 ou mais novo**, você também pode clonar pelo Terminal. O repositório é privado: sua conta precisa ter acesso.
+Em um **Mac Apple Silicon com macOS 14 ou mais novo**, você também pode clonar pelo Terminal. O repositório é público e o clone por HTTPS não precisa de autenticação.
 
 ```bash
 git clone https://github.com/rafaelferreiram/ps1-2-emulator.git
@@ -201,13 +214,13 @@ git --version
 
 Reference: [installing the Command Line Tools from Apple](https://developer.apple.com/documentation/xcode/installing-the-command-line-tools).
 
-### 2. Clone the private repository
+### 2. Clone the public repository
 
-You need to be signed in to GitHub with an account that has access. HTTPS example:
+No GitHub account is required for the public HTTPS clone. Choose a folder belonging to your current Mac user; this location is just an example, not a requirement:
 
 ```bash
-mkdir -p /Users/"$(whoami)"/Workspace/Personal
-cd /Users/"$(whoami)"/Workspace/Personal
+mkdir -p "$HOME/Workspace/Personal"
+cd "$HOME/Workspace/Personal"
 git clone https://github.com/rafaelferreiram/ps1-2-emulator.git
 cd ps1-2-emulator
 ```
@@ -230,7 +243,7 @@ For the text-only installer:
 bash install.sh
 ```
 
-The installer checks macOS, architecture and the Command Line Tools, shows the plan and asks for confirmation. It then builds the launcher with `build.sh` and installs it in `/Applications`. If the emulators are missing, it looks up the official releases of [DuckStation](https://github.com/stenzek/duckstation/releases/tag/latest) and [PCSX2](https://github.com/PCSX2/pcsx2/releases/latest), downloads the macOS packages and installs them in the same destination. For PCSX2 it uses the stable release, not a prerelease or Nightly.
+The installer first validates the files listed in `scripts/required-files.txt`, then checks macOS, architecture and the Command Line Tools, shows the plan and asks for confirmation. It builds the launcher with `build.sh` using its own temporary compiler/icon workspace, without writing into the downloaded source. The text installer defaults to `/Applications`; the graphical assistant can also select an existing writable personal Applications folder automatically. If the emulators are missing, it looks up the official releases of [DuckStation](https://github.com/stenzek/duckstation/releases/tag/latest) and [PCSX2](https://github.com/PCSX2/pcsx2/releases/latest), downloads the macOS packages and installs them in the chosen destination. For PCSX2 it uses the stable release, not a prerelease or Nightly.
 
 Before installing a download, it checks the **SHA-256 reported by the official GitHub API**, the bundle identity and the signature. If the check fails or the required hash is not available, that install stops. There is no option to skip those checks. That does not replace macOS security warnings or the first launch.
 
@@ -258,7 +271,7 @@ Arguments passed to `Instalar.command` go to the text installer: for example, `b
 
 #### Install without write permission for Applications
 
-Do not run the installer with `sudo`. Create an **Applications** folder inside your home folder using Finder, then select it with the wizard's destination picker. The equivalent text commands are:
+Do not run the installer with `sudo`. The assistant selects your personal Applications folder if it already exists and is writable when `/Applications` is not. Otherwise, use **Escolher pasta… → Nova Pasta** to create **Applications** inside your home folder and choose it. The equivalent text commands are:
 
 ```bash
 mkdir -p "$HOME/Applications"
@@ -295,7 +308,7 @@ bash build.sh
 
 The script generates the icon, copies the resources, compiles the native executable, applies a **local ad hoc signature** and validates the bundle. It does not download emulators or install the launcher in Applications. When it finishes, it prints a path similar to `/private/tmp/ps12-build.ABC123/PS1-2.app`. Use the real printed path to open or copy the app yourself. An Apple Developer certificate is not required for the local build. An ad hoc signature is not Apple notarization.
 
-The default build uses a local temporary folder to avoid Finder or iCloud metadata that can interfere with signing. `cache/`, `MakeIcon` and `AppIcon.iconset/` are generated locally and ignored by Git. The app is not run with `swift run`: this project builds a macOS bundle directly with `build.sh`.
+The final bundle defaults to a local temporary folder to avoid Finder or iCloud metadata that can interfere with signing. The compiler cache, `MakeIcon` and `AppIcon.iconset` now live in a separate owned `/private/tmp/ps12-build-work.*` directory, removed after success and preserved with its printed path after failure. Build inputs can be read-only. Old versions and some developer test runners may have created `cache/`, `MakeIcon` or `AppIcon.iconset/` inside the checkout; those remain ignored by Git and are not required by installation. The app is not run with `swift run`: this project builds a macOS bundle directly with `build.sh`.
 
 ## Libraries and covers
 
@@ -407,6 +420,8 @@ bash tests/run-cover-cache-tests.sh
 bash tests/run-installer-tests.sh
 bash tests/run-bootstrap-tests.sh
 bash tests/run-setup-wizard-tests.sh
+bash tests/run-source-layout-tests.sh
+bash tests/run-portable-build-tests.sh
 bash tests/run-library-settings-tests.sh
 bash tests/run-responsive-layout-tests.sh
 bash tests/run-personal-library-tests.sh
@@ -419,6 +434,10 @@ These tests use local fixtures and the included GIFs. They do not need to downlo
 The folder and personal-library tests use temporary preferences and directories. They cover persistence, validation, offline restore, console/root isolation, favorites, query/filter behavior, history and late results from earlier loads. Session lifecycle fixtures check process identity and navigation without starting emulators. Experience tests verify preference defaults/persistence, controller adjustment, motion settings and deterministic sound decoding without playing audio. The installer tests use isolated scenarios, without installing real emulators or replacing apps in `/Applications`. `bash install.sh --check` can check your machine's prerequisites before you install.
 
 The setup tests cover literal command arguments, streamed progress markers, UTF-8 output, bounded logs, large combined stdout/stderr, prerequisite failures, retry, explicit installation and an inert preview. They use harmless fixture backends, not real installs. The startup tests exercise prerequisite guidance and command forwarding. On 05/10/2026, a separate download-only check of the production installer passed for the official DuckStation `latest` macOS ZIP and PCSX2 `v2.8.2` stable macOS archive, including SHA-256, bundle identity, signature and quarantine. No emulator was opened or installed by that check. Download contents can change later, so checks remain mandatory on every installation.
+
+Portability tests use a real relocated distribution without `.git`, with spaces/accents, read-only inputs, a relative symlink and unrelated working directory. They check missing files before dependencies/build. The source-layout suite runs read-only `--check`; the portable-build suite mocks compilation/signing, verifies output paths and scoped cleanup, and never installs an app. The launcher tests separately verify sibling, system, user and registered emulator locations using harmless fake bundles.
+
+Version 5.0.1 was also compiled with the real Apple tools from a separate read-only copy whose path contained spaces and accents, outside the original checkout. Both the launcher and setup assistant compiled; the launcher's local signature validated and no compiler/icon files were created in the source. This checks portability on the test Mac, not every Mac model or an unattended first install: Apple permissions, BIOS and initial emulator configuration remain user steps.
 
 Optional, only on a machine with the emulators and SSD set up: a read inventory of the real libraries:
 
@@ -474,6 +493,8 @@ install.sh                 Install the launcher and missing official dependencie
 Instalar.command           Finder startup: Apple tools guidance and native setup window
 scripts/SetupWizard.swift  PS2-inspired installation, progress and first-launch buttons
 scripts/SetupInfo.plist    Identity of the temporary native setup app
+scripts/source-check.sh   Read-only validation of the extracted distribution
+scripts/required-files.txt Files required before installation or compilation
 scripts/installer-lib.sh   Official downloads, validation and publishing the apps
 scripts/MoveApp.swift      Exclusive, safe rename during install
 assets/                    Logo, photos, GIFs and three front covers
@@ -484,6 +505,6 @@ Creditos.txt               Sources and attribution for the visual assets
 
 ## Credits and use
 
-A personal project, with no official link to Sony, DuckStation or PCSX2. Third-party assets keep their own rights. Keeping the repository private does not change those rights. See [Creditos.txt](Creditos.txt) for the origin of the controllers, logo, GIFs and covers. No open redistribution license was assigned to the third-party assets.
+A personal project, with no official link to Sony, DuckStation or PCSX2. Third-party assets keep their own rights. Public repository visibility does not grant redistribution rights for those assets. See [Creditos.txt](Creditos.txt) for the origin of the controllers, logo, GIFs and covers. No open redistribution license was assigned to the third-party assets.
 
 Do not include ROMs, BIOS, saves, credentials, personal backups or emulator builds in this repository. `.gitignore` helps avoid accidental additions, but it does not replace reviewing the files before a commit.
