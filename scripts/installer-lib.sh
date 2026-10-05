@@ -23,6 +23,26 @@ installer_developer_path() { /usr/bin/xcode-select -p 2>/dev/null; }
 installer_swift_path() { /usr/bin/xcrun --no-cache --find swiftc 2>/dev/null; }
 installer_sdk_path() { /usr/bin/xcrun --no-cache --sdk macosx --show-sdk-path 2>/dev/null; }
 
+installer_architectures() {
+    if [ "${installer_distribution:-source}" = prebuilt-v1 ]; then
+        [ -n "${installer_arch_tool:-}" ] && [ -f "$installer_arch_tool" ] && [ -x "$installer_arch_tool" ] && [ ! -L "$installer_arch_tool" ] || {
+            installer_error 'O verificador de arquitetura do DMG não está disponível.'; return 1;
+        }
+        # Require native execution: an Intel-only helper must fail, never start
+        # a Rosetta installation prompt while checking a damaged package.
+        /usr/bin/arch -arm64 "$installer_arch_tool" "$1"
+    else
+        /usr/bin/lipo -archs "$1" 2>/dev/null
+    fi
+}
+
+installer_ensure_quarantine() {
+    local app="$1" stamp
+    if /usr/bin/xattr -p com.apple.quarantine "$app" >/dev/null 2>&1; then return 0; fi
+    stamp="$(printf '%x' "$(/bin/date +%s)")"
+    /usr/bin/xattr -w com.apple.quarantine "0083;$stamp;PS12Installer;" "$app"
+}
+
 installer_check_tools() {
     local developer compiler sdk
     # xcrun can invoke the system's tool-install prompt when no developer tools
@@ -124,7 +144,8 @@ installer_bundle_identity() {
     [ "$(installer_plist "$app/Contents/Info.plist" CFBundleIdentifier)" = "$expected" ] || return 1
     executable="$(installer_plist "$app/Contents/Info.plist" CFBundleExecutable)" || return 1
     [[ "$executable" =~ ^[A-Za-z0-9_.+-]+$ ]] || return 1
-    [ -x "$app/Contents/MacOS/$executable" ]
+    [ -f "$app/Contents/MacOS/$executable" ] && [ -r "$app/Contents/MacOS/$executable" ] &&
+        [ -x "$app/Contents/MacOS/$executable" ] && [ ! -L "$app/Contents/MacOS/$executable" ]
 }
 
 installer_validate_bundle() {
@@ -132,7 +153,7 @@ installer_validate_bundle() {
     installer_bundle_identity "$app" "$expected" || { installer_error "App inesperado ou incompleto: $app"; return 1; }
     /usr/bin/codesign --verify --strict "$app" || return 1
     executable="$(installer_plist "$app/Contents/Info.plist" CFBundleExecutable)" || return 1
-    architectures="$(/usr/bin/lipo -archs "$app/Contents/MacOS/$executable" 2>/dev/null)" || {
+    architectures="$(installer_architectures "$app/Contents/MacOS/$executable")" || {
         installer_error 'Não foi possível verificar a arquitetura do executável.'; return 1;
     }
     case " $architectures " in
@@ -161,7 +182,7 @@ installer_download_emulator() {
     installer_release_config "$key" || return 1
     metadata="$stage/$key-release.json"
     printf 'Consultando a versão oficial: %s\n' "$release_endpoint"
-    /usr/bin/curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+    /usr/bin/curl --disable --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
         --connect-timeout 20 --max-time 60 --retry 2 --max-filesize 2097152 \
         --output "$metadata" "$release_endpoint" || {
         installer_error 'Não foi possível consultar a versão oficial. Confira a conexão e tente novamente; a instalação existente permanece intacta.'; return 1;
@@ -169,7 +190,7 @@ installer_download_emulator() {
     installer_select_asset "$key" "$metadata" || return 1
     archive="$stage/$release_filename"
     printf 'Baixando %s (%s)\n%s\n' "$release_app_name" "$release_tag" "$release_url"
-    /usr/bin/curl --fail --show-error --location --proto '=https' --proto-redir '=https' \
+    /usr/bin/curl --disable --fail --show-error --location --proto '=https' --proto-redir '=https' \
         --connect-timeout 20 --max-time 900 --retry 2 --max-filesize 314572800 \
         --output "$archive" "$release_url" || {
         installer_error 'O download não terminou. Confira a conexão e o espaço livre; nenhum pacote parcial será instalado.'; return 1;
@@ -189,7 +210,7 @@ installer_download_emulator() {
     [ "$count" -eq 1 ] || { installer_error 'O pacote não contém exatamente um app.'; return 1; }
     installer_validate_bundle "$downloaded_app" "$release_bundle_id" || return 1
     executable="$(installer_plist "$downloaded_app/Contents/Info.plist" CFBundleExecutable)" || return 1
-    architectures="$(/usr/bin/lipo -archs "$downloaded_app/Contents/MacOS/$executable" 2>/dev/null)" || return 1
+    architectures="$(installer_architectures "$downloaded_app/Contents/MacOS/$executable")" || return 1
     printf 'Arquitetura verificada no executável: %s\n' "$architectures"
     case " $architectures " in
         *' arm64 '*) ;;
@@ -230,7 +251,7 @@ installer_launcher_closed() {
 
 installer_move_exclusive() {
     [ -n "${installer_move_tool:-}" ] && [ -x "$installer_move_tool" ] || {
-        installer_error 'A ferramenta de instalação segura não foi compilada.'; return 1;
+        installer_error 'A ferramenta de instalação segura não está disponível.'; return 1;
     }
     "$installer_move_tool" "$1" "$2"
 }
@@ -261,7 +282,7 @@ installer_publish_app() {
     fi
     staging="$(/usr/bin/mktemp -d "$container/.ps12-stage.XXXXXX")" || return 1
     # Copy beside the final destination so publishing is a same-volume rename.
-    /usr/bin/ditto "$source" "$staging/$name" || { installer_error "Cópia incompleta preservada em $staging"; return 1; }
+    /usr/bin/ditto --rsrc --extattr --qtn "$source" "$staging/$name" || { installer_error "Cópia incompleta preservada em $staging"; return 1; }
     installer_validate_bundle "$staging/$name" "$identity" || return 1
     if [ -e "$destination" ] || [ -L "$destination" ]; then
         installer_bundle_identity "$destination" "$identity" || return 1

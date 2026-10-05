@@ -1,18 +1,37 @@
 #!/bin/bash
 set -euo pipefail
 installer_source="$(cd "$(dirname "$0")" && pwd)"
-if [ ! -f "$installer_source/scripts/source-check.sh" ] || [ ! -r "$installer_source/scripts/source-check.sh" ]; then
-    printf 'ERRO: download incompleto; falta scripts/source-check.sh.\nExtraia o ZIP inteiro e abra Instalar.command dentro da pasta extraída.\nPasta reconhecida: %s\n' "$installer_source" >&2
-    exit 1
+installer_distribution=source
+installer_arch_tool=''
+installer_move_tool=''
+installer_packaged=no
+if [ -e "$installer_source/distribution.plist" ] || [ -L "$installer_source/distribution.plist" ] ||
+    [ -e "$installer_source/payload" ] || [ -L "$installer_source/payload" ]; then
+    installer_packaged=yes
 fi
-source "$installer_source/scripts/source-check.sh"
-ps12_source_check "$installer_source"
+case "$installer_source" in *.app/Contents/Resources/Installer) installer_packaged=yes ;; esac
+if [ "$installer_packaged" = yes ]; then
+    for installer_required in scripts/installer-lib.sh scripts/payload-check.sh; do
+        if [ ! -f "$installer_source/$installer_required" ] || [ ! -r "$installer_source/$installer_required" ] || [ -L "$installer_source/$installer_required" ]; then
+            printf 'ERRO: instalador DMG incompleto; falta ou está inválido %s.\nBaixe novamente o DMG e abra o instalador dentro dele.\n' "$installer_required" >&2
+            exit 1
+        fi
+    done
+else
+    if [ ! -f "$installer_source/scripts/source-check.sh" ] || [ ! -r "$installer_source/scripts/source-check.sh" ]; then
+        printf 'ERRO: download incompleto; falta scripts/source-check.sh.\nExtraia o ZIP inteiro e abra Instalar.command dentro da pasta extraída.\nPasta reconhecida: %s\n' "$installer_source" >&2
+        exit 1
+    fi
+    source "$installer_source/scripts/source-check.sh"
+    ps12_source_check "$installer_source"
+fi
 source "$installer_source/scripts/installer-lib.sh"
+if [ "$installer_packaged" = yes ]; then source "$installer_source/scripts/payload-check.sh"; fi
 
 installer_usage() {
     printf '%s\n' 'PS1/2 — instalação guiada para macOS' \
         'Uso: bash install.sh [--check] [--no-emulators] [--yes] [--destination PASTA]' \
-        '  padrão: compilar a central e baixar DuckStation/PCSX2 ausentes em /Applications' \
+        '  padrão: instalar a central e baixar DuckStation/PCSX2 ausentes em /Applications' \
         '  --check          apenas verificar; não baixar, compilar ou alterar arquivos' \
         '  --no-emulators   instalar somente a central' \
         '  --yes            confirmar o plano sem pergunta (não aceita licenças)' \
@@ -38,7 +57,7 @@ while [ "$#" -gt 0 ]; do
     shift
 done
 
-installer_step preflight 'Verificando o Mac, as ferramentas Apple e a pasta de instalação'
+installer_step preflight 'Verificando o Mac, os componentes e a pasta de instalação'
 [ "$(/usr/bin/uname -s)" = Darwin ] || { installer_error 'Este instalador exige macOS.'; exit 1; }
 [ "$EUID" -ne 0 ] || { installer_error 'Execute sem sudo e sem root.'; exit 1; }
 [ "$(/usr/bin/uname -m)" = arm64 ] || {
@@ -47,7 +66,11 @@ installer_step preflight 'Verificando o Mac, as ferramentas Apple e a pasta de i
 installer_version_at_least "$(/usr/bin/sw_vers -productVersion)" 14.0 || {
     installer_error 'A central exige macOS 14 ou mais recente.'; exit 1;
 }
-installer_check_tools
+if [ "$installer_packaged" = yes ]; then
+    ps12_payload_check "$installer_source"
+else
+    installer_check_tools
+fi
 [[ "$installer_destination" = /* ]] && [ -d "$installer_destination" ] && [ ! -L "$installer_destination" ] || {
     installer_error 'O destino deve ser uma pasta absoluta já existente, não um atalho ou link simbólico.'; exit 1;
 }
@@ -63,7 +86,12 @@ if [ -e "$installer_target" ] || [ -L "$installer_target" ]; then
     }
 fi
 
-printf '\nPS1/2 — pronto para começar\nCentral: compilar e instalar em %s\n' "$installer_target"
+printf '\nPS1/2 — pronto para começar\n'
+if [ "$installer_packaged" = yes ]; then
+    printf 'Central: instalar a versão pronta do DMG em %s\n' "$installer_target"
+else
+    printf 'Central: compilar e instalar em %s\n' "$installer_target"
+fi
 installer_duck=''; installer_pcsx=''
 if [ "$installer_emulators" = yes ]; then
     installer_find_existing DuckStation.app com.github.stenzek.duckstation "$installer_destination"
@@ -111,15 +139,27 @@ trap installer_cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 installer_stage="$(/usr/bin/mktemp -d /private/tmp/ps12-install.XXXXXX)"
-installer_move_tool="$installer_stage/MoveApp"
-installer_step build 'Preparando e compilando sua central PS1/2'
-/usr/bin/xcrun swiftc -O -module-cache-path "$installer_stage/module-cache" \
-    "$installer_source/scripts/MoveApp.swift" -o "$installer_move_tool" || {
-    installer_error 'Não foi possível compilar a ferramenta de instalação. Confira as mensagens das ferramentas Apple acima.'; exit 1;
-}
-/bin/bash "$installer_source/build.sh" "$installer_stage/PS1-2.app" || {
-    installer_error 'A compilação da central falhou. A instalação existente permanece intacta; veja o diagnóstico acima.'; exit 1;
-}
+if [ "$installer_packaged" = yes ]; then
+    installer_step build 'Preparando sua central PS1/2 já compilada'
+    # Explicit flags also preserve quarantine if DITTONORSRC is set by the user.
+    /usr/bin/ditto --rsrc --extattr --qtn "$installer_source/payload/PS1-2.app" "$installer_stage/PS1-2.app" || {
+        installer_error 'Não foi possível copiar a central do DMG. A instalação existente permanece intacta.'; exit 1;
+    }
+    # Source media may also carry read-only file modes. Make only this private
+    # staged copy writable so quarantine and eventual cleanup can succeed.
+    /bin/chmod -R u+w "$installer_stage/PS1-2.app"
+    installer_ensure_quarantine "$installer_stage/PS1-2.app"
+else
+    installer_move_tool="$installer_stage/MoveApp"
+    installer_step build 'Preparando e compilando sua central PS1/2'
+    /usr/bin/xcrun swiftc -O -module-cache-path "$installer_stage/module-cache" \
+        "$installer_source/scripts/MoveApp.swift" -o "$installer_move_tool" || {
+        installer_error 'Não foi possível compilar a ferramenta de instalação. Confira as mensagens das ferramentas Apple acima.'; exit 1;
+    }
+    /bin/bash "$installer_source/build.sh" "$installer_stage/PS1-2.app" || {
+        installer_error 'A compilação da central falhou. A instalação existente permanece intacta; veja o diagnóstico acima.'; exit 1;
+    }
+fi
 installer_validate_bundle "$installer_stage/PS1-2.app" local.rafael.centraldejogos
 
 # Prepare every missing app before publishing any app. A network/hash/build
@@ -160,5 +200,9 @@ printf 'Próximos passos:\n1. Abra DuckStation/PCSX2 e configure sua BIOS e seu 
 printf 'open "%s"\n' "$installer_target"
 printf '4. Em Pastas de jogos (⌘,), escolha suas bibliotecas no Mac ou em um disco externo.\n'
 printf 'O padrão permanece /Volumes/Extreme SSD/Emulacao/{PS1,PS2}/Jogos. X/Enter entra na biblioteca e confirma o jogo; T/△ atualiza dentro dela.\n'
-printf 'BIOS e jogos são fornecidos por você. Leia README.md e docs/EMULADORES.md para o primeiro uso.\n'
+if [ "$installer_packaged" = yes ]; then
+    printf 'BIOS e jogos são fornecidos por você. Leia Read Me.txt no DMG e o guia online para o primeiro uso:\nhttps://github.com/rafaelferreiram/ps1-2-emulator#readme\n'
+else
+    printf 'BIOS e jogos são fornecidos por você. Leia README.md e docs/EMULADORES.md para o primeiro uso.\n'
+fi
 installer_step complete 'Tudo instalado. Configure seus emuladores, escolha os jogos e aproveite'

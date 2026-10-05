@@ -4,6 +4,10 @@ The PS1/2 app in this repository is only the launcher and catalog. DuckStation a
 
 ## Recommended path: use the launcher installer
 
+For normal installation, [download the **5.1.0 DMG release**](https://github.com/rafaelferreiram/ps1-2-emulator/releases/download/v5.1.0/PS1-2-Installer-5.1.0-arm64.dmg) and open **Install PS1-2.app** inside it. The launcher and assistant are precompiled: no Terminal, Git, Homebrew, Xcode or Command Line Tools are needed for this route. The assistant installs the launcher and downloads verified official emulators that are missing. The current DMG is ad hoc signed, not Developer ID signed or Apple-notarized; macOS may require your explicit security confirmation. See the [DMG steps in the README](../README.md#download-and-install).
+
+The commands below are the alternative **source-build workflow**, which still requires Apple's build tools:
+
 After downloading the ZIP and extracting the whole folder, double-click **Instalar.command**. Or, after cloning, open Terminal in the `ps1-2-emulator` folder:
 
 ```bash
@@ -98,7 +102,7 @@ This table describes the launcher's scanner, not a compatibility guarantee from 
 
 ## Common problems
 
-- **`swiftc` or the SDK was not found:** open `Instalar.command` and follow the Apple tools guidance, or run `xcode-select --install`, finish the install and run `bash install.sh --check` again. Apple setup and any license confirmation remain your responsibility.
+- **`swiftc` or the SDK was not found (source builds only):** use the prebuilt DMG to avoid this requirement, or open `Instalar.command` and follow the Apple tools guidance. For manual source setup, run `xcode-select --install`, finish the install and run `bash install.sh --check` again. Apple setup and any license confirmation remain your responsibility.
 - **No permission to install in `/Applications`:** select another writable folder in the setup window, or use your home folder with `--destination "$HOME/Applications"` after creating it. Do not use `sudo` as a shortcut.
 - **The Finder shortcut does not start:** keep it inside the complete extracted project folder. If macOS says Apple cannot verify it, confirm you downloaded this repository and trust the copy before using **System Settings → Privacy & Security → Open Anyway** for that file. Do not disable system protections. See [Apple's procedure](https://support.apple.com/102445).
 - **“No such file or directory”:** do not reuse another person's absolute path. Open the actual extracted folder in Finder. For a trusted copy, you can type `bash` followed by a space in Terminal, drag the real `Instalar.command` file into that window and press Enter. The installer now checks all required inputs and names missing files before requesting tools or compiling; an incomplete ZIP must be downloaded and extracted again.

@@ -6,9 +6,10 @@
     <key>CFBundleExecutable</key><string>SetupWizard</string>
     <key>CFBundleName</key><string>Instalar PS1/2</string>
     <key>CFBundleDisplayName</key><string>Instalar PS1/2</string>
+    <key>CFBundleIconFile</key><string>setup</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>1.0</string>
-    <key>CFBundleVersion</key><string>1</string>
+    <key>CFBundleShortVersionString</key><string>5.1.0</string>
+    <key>CFBundleVersion</key><string>28</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
     <key>NSHighResolutionCapable</key><true/>

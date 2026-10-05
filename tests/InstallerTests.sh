@@ -185,6 +185,18 @@ test_reject 'missing executable rejected' installer_bundle_identity "$fixture_id
 test_reject 'unsigned fixture rejected' installer_validate_bundle "$fixture_identity_app" local.ps12.offlinefixture
 test_ok 'sign disposable local fixture' fixture_sign "$fixture_identity_app"
 test_ok 'signed fixture validates' installer_validate_bundle "$fixture_identity_app" local.ps12.offlinefixture
+test_ok 'packaged launcher acquires Gatekeeper quarantine if missing' installer_ensure_quarantine "$fixture_identity_app"
+test_ok 'quarantine is readable after creation' /usr/bin/xattr -p com.apple.quarantine "$fixture_identity_app"
+fixture_quarantine='0083;12345678;FixtureBrowser;'
+/usr/bin/xattr -w com.apple.quarantine "$fixture_quarantine" "$fixture_identity_app"
+test_ok 'existing quarantine is retained' installer_ensure_quarantine "$fixture_identity_app"
+test_equal 'browser provenance is not replaced' "$(/usr/bin/xattr -p com.apple.quarantine "$fixture_identity_app")" "$fixture_quarantine"
+fixture_no_arch_helper() (
+    installer_distribution=prebuilt-v1
+    installer_arch_tool="$installer_test_stage/absent-InspectMachO"
+    installer_architectures "$fixture_identity_app/Contents/MacOS/PS12Fixture"
+)
+test_reject 'packaged architecture lookup never falls back when helper is missing' fixture_no_arch_helper
 /usr/bin/plutil -replace LSMinimumSystemVersion -string 99.0 "$fixture_identity_app/Contents/Info.plist"
 test_ok 'sign future-macOS fixture' fixture_sign "$fixture_identity_app"
 test_reject 'future macOS requirement rejected' installer_validate_bundle "$fixture_identity_app" local.ps12.offlinefixture

@@ -10,14 +10,16 @@
 </p>
 
 <p align="center">
-  <a href="#download-and-install"><strong>Download and install</strong></a>
+  <a href="https://github.com/rafaelferreiram/ps1-2-emulator/releases/download/v5.1.0/PS1-2-Installer-5.1.0-arm64.dmg"><strong>Download DMG</strong></a>
+  &nbsp;·&nbsp;
+  <a href="#download-and-install">Installation guide</a>
   &nbsp;·&nbsp;
   <a href="#a-look-at-the-app">See the app</a>
   &nbsp;·&nbsp;
   <a href="#full-guide">Full guide</a>
 </p>
 
-<p align="center"><strong>Version 5.0.1 · build 27</strong> · Apple Silicon Mac · macOS 14 or later</p>
+<p align="center"><strong>Version 5.1.0 · build 28</strong> · Apple Silicon Mac · macOS 14 or later</p>
 
 <p align="center">
   <img src="docs/images/menu.png" width="920" alt="Main menu: PlayStation 2 selected, with preview, controls and DualSense">
@@ -27,7 +29,16 @@
 
 You bring the games and the BIOS. They stay in the folder you choose, on the Mac or on an external disk.
 
-## Portable installation — version 5.0.1
+## What's new in version 5.1
+
+- **A ready-to-run DMG installer:** the launcher, native setup assistant and installation helpers are compiled before distribution. End users do not need Terminal, Git, Homebrew, Xcode or Command Line Tools when using the DMG.
+- **Self-contained setup:** open **Install PS1-2.app** from the mounted disk image. The assistant finds its files inside its own bundle, including when macOS relocates a downloaded app for security. It writes temporary files outside the read-only image.
+- **Official dependencies:** missing DuckStation and PCSX2 apps are downloaded and verified; existing emulators are preserved. The previous launcher is backed up before replacement.
+- **The source workflow remains available:** cloning or downloading the source ZIP still uses `Instalar.command` and Apple's build tools. The DMG is a separate release asset, not GitHub's automatic source ZIP.
+
+The current release uses local ad hoc signatures, **not Developer ID signing or Apple notarization**. A DMG does not remove macOS security confirmations. BIOS, games and initial emulator configuration are still your responsibility.
+
+## Source ZIP portability (introduced in version 5.0.1)
 
 The installer uses its actual file location, not a fixed username or a folder from another Mac. The extracted folder can be in Downloads, Desktop or any other readable location, including names with spaces and accented characters. Keep the folder in the same place until installation finishes.
 
@@ -36,7 +47,7 @@ The installer uses its actual file location, not a fixed username or a folder fr
 - The assistant prefers `/Applications` when it is writable; otherwise, it uses `~/Applications` if that folder already exists and is writable. The folder picker also lets you create a personal folder with **New Folder**, without Terminal commands.
 - The installed launcher looks for emulators beside itself, in `/Applications`, in the user's Applications folder and, finally, among apps registered with macOS. It verifies each app's identity and the presence of an executable.
 
-This does not remove macOS confirmations: the project **does not yet distribute an installer signed with Developer ID and notarized by Apple**. See the security notice in step 2 below.
+This does not remove macOS confirmations: the project **does not yet distribute an installer signed with Developer ID and notarized by Apple**. See the security notice in the download instructions below.
 
 ## What's new in version 5.0
 
@@ -75,13 +86,44 @@ The three covers are a sample included in the project, so the catalog can look l
 
 ## Download and install
 
-**[Download the latest source ZIP](https://github.com/rafaelferreiram/ps1-2-emulator/archive/refs/heads/main.zip)**, then follow the steps below. The current download includes the guided installer and builds the launcher on your Mac; a prebuilt `.dmg` installer is not available yet.
+**[Download PS1/2 5.1.0 for Mac — DMG, about 4.5 MB](https://github.com/rafaelferreiram/ps1-2-emulator/releases/download/v5.1.0/PS1-2-Installer-5.1.0-arm64.dmg)**
 
-### Start here — no programming experience needed
+This is the precompiled installer for **Apple Silicon (M1 or later), macOS 14 or later**. It includes the launcher and setup assistant; missing emulators are downloaded separately during installation. No GitHub account is required.
 
-You need an **Apple Silicon Mac (M1 or later), macOS 14 or later, and internet access for installation**. The repository is public; you do not need a GitHub account to download the ZIP.
+[Release notes and all assets](https://github.com/rafaelferreiram/ps1-2-emulator/releases/tag/v5.1.0) · [SHA-256 checksum](https://github.com/rafaelferreiram/ps1-2-emulator/releases/download/v5.1.0/PS1-2-Installer-5.1.0-arm64.dmg.sha256)
+
+On the release page, choose **`PS1-2-Installer-5.1.0-arm64.dmg`**, not the automatic **Source code (zip)** or **Source code (tar.gz)** downloads. Source archives require a local build; the DMG does not.
+
+### Recommended: DMG — no programming tools needed
+
+You need an **Apple Silicon Mac (M1 or later), macOS 14 or later, and internet access to download missing emulators**. The repository is public; no GitHub account is required to download a release. Intel Macs are not supported by this launcher build.
 
 **Interface language:** this README is in English, but the current app, installer and screenshots use Portuguese. Interface actions are described in English below; their on-screen labels may differ. Actual filenames, commands and paths are kept unchanged.
+
+1. Download the DMG using the link above and open it in Finder. You do not need to clone the repository or extract a source ZIP.
+2. Double-click **Install PS1-2.app** inside the mounted disk image. Keep the image mounted until installation finishes.
+3. Review the Mac checks and destination, then click **Install**. If Applications is not writable, use **Choose folder…** to select another writable folder or create Applications inside your home folder.
+4. The assistant installs the bundled launcher and downloads any missing official **DuckStation** and **PCSX2** apps. It checks the payload and downloaded packages before publishing the apps. It does not compile anything on your Mac.
+5. Use the completion buttons to open each emulator and configure your BIOS and controller. Test a game directly in each emulator. Then open **PS1/2**, choose your **Game folders**, and select a console and game.
+6. Quit the installer and eject the disk image. Open the installed **PS1/2** app for everyday use.
+
+**If macOS blocks an app with “Apple could not verify…”:** this release is not notarized by Apple. Only if you obtained the DMG from this project's release and trust it, use **System Settings → Privacy & Security → Open Anyway** for the app macOS blocked and confirm personally. Individual installed apps can require their own first-open confirmation. Do not disable Gatekeeper or remove quarantine globally. [Apple's official guidance](https://support.apple.com/en-us/102445).
+
+**Not included:** games, BIOS or saves. Supply your own authorized files and complete the emulators' initial setup. If an emulator requires Rosetta, macOS may ask you to install it and accept Apple's terms; the assistant does not do that silently. No restart is required by this installer, and apps open only when you choose to open them.
+
+**Already installed?** Existing emulators are preserved. Quit **PS1/2** before updating it; the installer keeps the previous launcher in a backup folder shown in its details. Your games, BIOS, saves, emulator settings and SSD are not modified.
+
+**Optional integrity check:** download the `.sha256` file beside the DMG into the same folder, open Terminal in that folder, and run:
+
+```bash
+shasum -a 256 -c PS1-2-Installer-5.1.0-arm64.dmg.sha256
+```
+
+It should report `OK`. This checks that your download matches the published file; it does not replace Developer ID signing, Apple notarization or your decision to trust the project.
+
+### Alternative: build from the source ZIP or a clone
+
+**[Download the source ZIP](https://github.com/rafaelferreiram/ps1-2-emulator/archive/refs/heads/main.zip)** if you want to build locally. Unlike the DMG, this route requires Apple's Command Line Tools and compiles the launcher on your Mac.
 
 1. On GitHub, click **Code → Download ZIP** and extract the archive in Finder.
 2. Open the extracted folder and double-click **Instalar.command**. Do not move this file out of the project folder. **If you see “Apple could not verify…”**, Apple has not verified the file. Only if you downloaded it from this repository and trust the copy, use **System Settings → Privacy & Security → Open Anyway** for this file and confirm yourself. Do not disable Gatekeeper. [Apple's official guidance](https://support.apple.com/en-us/102445).
@@ -132,11 +174,11 @@ For a text-only installation, open Terminal in the extracted folder and run `bas
 
 ## Full guide
 
-The repository is named `ps1-2-emulator`. The app is named **PS1/2** and the installed file is `PS1-2.app`, because `/` is a folder separator on macOS. Current version: **5.0.1, build 27**.
+The repository is named `ps1-2-emulator`. The app is named **PS1/2** and the installed file is `PS1-2.app`, because `/` is a folder separator on macOS. Current version: **5.1.0, build 28**.
 
 ## Start here: clone, install and open
 
-The recommended route is the graphical assistant, opened through **Instalar.command**. It uses the same inspectable installer as the command line, but organizes the actions into PS2-inspired blue screens. The interface uses a mouse/keyboard and does not require a controller to be configured first.
+For normal installation, use the [DMG instructions above](#recommended-dmg--no-programming-tools-needed). The following section is for building from a source ZIP or clone. Its graphical assistant is opened through **Instalar.command** and uses the same inspectable backend as the DMG, but compiles the launcher locally. The PS2-inspired interface uses a mouse/keyboard and does not require a controller to be configured first.
 
 On an **Apple Silicon Mac running macOS 14 or later**, you can also clone through Terminal. The repository is public and HTTPS cloning does not require authentication.
 
@@ -186,9 +228,9 @@ It installs the launcher and downloads **only DuckStation and PCSX2 apps that ar
 
 | Dependency | Why it is needed |
 |---|---|
-| Apple Silicon Mac — M1 or later | The script compiles for `arm64`. Intel is not a target of this build. |
+| Apple Silicon Mac — M1 or later | Both the DMG and source build target `arm64`. Intel is not a target of this build. |
 | macOS 14 or later | Minimum set in `Info.plist` and in the compiler. |
-| Xcode Command Line Tools | Provides `swiftc`, the macOS SDK and the build tools. |
+| Xcode Command Line Tools (source/development only) | Provides `swiftc`, the macOS SDK and the build tools. Not needed to use the prebuilt DMG. |
 | Git (optional) | To clone the repository. Not needed when using Download ZIP. Usually included with the Command Line Tools. |
 | DuckStation and PCSX2 | External apps that run the games. |
 | BIOS and images of your games | Configure them in the emulators, following their official documentation. |
@@ -198,6 +240,8 @@ It does not use Node.js, npm, Python, Homebrew, CocoaPods or external Swift pack
 The code was compiled and tested with Swift 6.4 on Apple Silicon. The declared minimum is macOS 14. Not every macOS or SDK version has been tested.
 
 ## Detailed installation
+
+This section covers the **source build**. For the ready-to-run DMG, follow [Download and install](#download-and-install); skip the developer-tools and clone steps.
 
 ### 1. Prepare the environment
 
@@ -314,6 +358,30 @@ The script generates the icon, copies the resources, compiles the native executa
 
 The final bundle defaults to a local temporary folder to avoid Finder or iCloud metadata that can interfere with signing. The compiler cache, `MakeIcon` and `AppIcon.iconset` now live in a separate owned `/private/tmp/ps12-build-work.*` directory, removed after success and preserved with its printed path after failure. Build inputs can be read-only. Old versions and some developer test runners may have created `cache/`, `MakeIcon` or `AppIcon.iconset/` inside the checkout; those remain ignored by Git and are not required by installation. The app is not run with `swift run`: this project builds a macOS bundle directly with `build.sh`.
 
+### Build the DMG for distribution
+
+This is a **developer task**, requiring Apple's build tools on an Apple Silicon Mac. End users only need the resulting DMG:
+
+```bash
+bash scripts/build-dmg.sh
+```
+
+The script creates `dist/PS1-2-Installer-5.1.0-arm64.dmg` and a matching `.sha256` file. An optional output-directory argument lets you choose another location. Existing release files are never overwritten; use a new output directory when rebuilding the same version.
+
+The image contains **Install PS1-2.app** and **Read Me.txt**. The app bundles the compiled launcher, setup assistant, exclusive-move helper and a native Mach-O architecture inspector. Its prebuilt installation path does not invoke `swiftc`, `xcrun`, `xcode-select` or the `lipo` developer-tools shim. Source builds retain their normal toolchain checks. The installer writes only to its temporary workspace and the chosen installation destination, not to the mounted image.
+
+The builder validates local code signatures and the bundled payload, verifies the compressed image, and generates its checksum. These are **ad hoc signatures**, not proof of an identified developer or Apple notarization. A Developer ID-signed and notarized distribution is a separate release process. Do not describe this build as Apple-verified. [Apple's distribution guidance](https://developer.apple.com/documentation/xcode/packaging-mac-software-for-distribution).
+
+The DMG does not bundle the external emulators, BIOS, games, saves or personal settings. Missing emulators are fetched from their official releases during installation. The app's existing artwork remains subject to the [credits and use](#credits-and-use) notice.
+
+To test a built image on a Mac with disk-image mounting available:
+
+```bash
+bash tests/run-dmg-tests.sh "$PWD/dist/PS1-2-Installer-5.1.0-arm64.dmg"
+```
+
+This mounts the image read-only and installs only its bundled launcher into a disposable temporary folder, with developer-tool lookup deliberately unavailable. It does not download or open emulators, replace real apps, or register the test launcher with LaunchServices.
+
 ## Libraries and covers
 
 The default folders remain these, outside the repository:
@@ -426,6 +494,8 @@ bash tests/run-bootstrap-tests.sh
 bash tests/run-setup-wizard-tests.sh
 bash tests/run-source-layout-tests.sh
 bash tests/run-portable-build-tests.sh
+bash tests/run-macho-inspector-tests.sh
+bash tests/run-prebuilt-installer-tests.sh
 bash tests/run-library-settings-tests.sh
 bash tests/run-responsive-layout-tests.sh
 bash tests/run-personal-library-tests.sh
@@ -442,6 +512,10 @@ The setup tests cover literal command arguments, streamed progress markers, UTF-
 Portability tests use a real relocated distribution without `.git`, with spaces/accents, read-only inputs, a relative symlink and unrelated working directory. They check missing files before dependencies/build. The source-layout suite runs read-only `--check`; the portable-build suite mocks compilation/signing, verifies output paths and scoped cleanup, and never installs an app. The launcher tests separately verify sibling, system, user and registered emulator locations using harmless fake bundles.
 
 Version 5.0.1 was also compiled with the real Apple tools from a separate read-only copy whose path contained spaces and accents, outside the original checkout. Both the launcher and setup assistant compiled; the launcher's local signature validated and no compiler/icon files were created in the source. This checks portability on the test Mac, not every Mac model or an unattended first install: Apple permissions, BIOS and initial emulator configuration remain user steps.
+
+For version 5.1.0, eight relevant suites passed 589 assertions: bootstrap, source layout, portable build, launcher selection, setup assistant, installer, prebuilt installation and native Mach-O inspection. The final DMG passed Apple's image checksum verification. Its exact contents were independently extracted and their nested code signatures verified; the extracted read-only payload installed the real launcher into a temporary destination while developer-tool lookup was unavailable. The setup window also opened without a source-path argument. Official DuckStation and PCSX2 downloads passed hash, signature and architecture checks with the new native inspector; neither emulator was installed or opened during validation.
+
+Disk-image mounting was unavailable in the build environment, so the mounted-image test and first-open Gatekeeper flow were **not** completed there. Extraction and isolated installation do not replace testing a downloaded DMG on a fresh Mac. This release is not Apple-notarized; no claim is made that it runs without security confirmations or on every Mac.
 
 Optional, only on a machine with the emulators and SSD set up: a read inventory of the real libraries:
 
@@ -501,6 +575,10 @@ scripts/source-check.sh   Read-only validation of the extracted distribution
 scripts/required-files.txt Files required before installation or compilation
 scripts/installer-lib.sh   Official downloads, validation and publishing the apps
 scripts/MoveApp.swift      Exclusive, safe rename during install
+scripts/InspectMachO.swift Native architecture checks without developer tools
+scripts/payload-check.sh   Read-only validation of the precompiled DMG payload
+scripts/build-dmg.sh       Developer-side build, signing, DMG and checksum
+docs/DMG-README.txt        Getting started and safety notice shipped in the DMG
 assets/                    Logo, photos, GIFs and three front covers
 tests/                     Automated tests
 docs/EMULADORES.md         Downloads and first setup

@@ -31,6 +31,10 @@ scripts/installer-lib.sh
 scripts/SetupWizard.swift
 scripts/SetupInfo.plist
 scripts/MoveApp.swift
+scripts/InspectMachO.swift
+scripts/payload-check.sh
+scripts/build-dmg.sh
+docs/DMG-README.txt
 assets/Logo.png
 assets/PS1Controller.png
 assets/PS2Controller.png

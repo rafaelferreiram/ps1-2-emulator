@@ -57,6 +57,118 @@ struct SetupWizardTests {
         expect(!SetupDestination.isWritableDirectory(fileDestination), "Writable files cannot be installation destinations")
         expect(!SetupDestination.isWritableDirectory(absentDestination), "Missing destination is rejected")
         expect(!FileManager.default.fileExists(atPath: absentDestination.path), "Checking a missing destination does not create it")
+
+        func launchFails(_ arguments: [String], resources: URL?) -> Bool {
+            do { _ = try SetupStartup.resolve(arguments: arguments, resources: resources); return false }
+            catch { return error is SetupLaunchError }
+        }
+        func writePlist(_ values: [String: Any], to url: URL) throws {
+            try PropertyListSerialization.data(fromPropertyList: values, format: .xml, options: 0).write(to: url)
+        }
+        func makeBundledFixture(_ name: String) throws -> URL {
+            let resources = fixtureRoot.appendingPathComponent(name + "/Install PS1-2.app/Contents/Resources", isDirectory: true)
+            let installer = resources.appendingPathComponent("Installer", isDirectory: true)
+            let executableDirectory = installer.appendingPathComponent("payload/PS1-2.app/Contents/MacOS", isDirectory: true)
+            try FileManager.default.createDirectory(at: executableDirectory, withIntermediateDirectories: true)
+            let readOnlyBackend = "#!/bin/bash\nset -eu\n[ \"${1:-}\" = --check ] || exit 42\nprintf 'PS12_STEP:preflight:Read-only fixture checked\\n'\n"
+            try readOnlyBackend.write(to: installer.appendingPathComponent("install.sh"), atomically: true, encoding: .utf8)
+            try writePlist(["PS12Distribution": "prebuilt-v1"], to: installer.appendingPathComponent("distribution.plist"))
+            try writePlist(["CFBundleIdentifier": SetupApplication.central.bundleID, "CFBundleExecutable": "PS12"],
+                           to: installer.appendingPathComponent("payload/PS1-2.app/Contents/Info.plist"))
+            for relativePath in ["payload/PS1-2.app/Contents/MacOS/PS12", "payload/MoveApp", "payload/InspectMachO"] {
+                let url = installer.appendingPathComponent(relativePath)
+                try Data("#!/bin/bash\nexit 0\n".utf8).write(to: url)
+                try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+            }
+            return resources
+        }
+        let bundledResources = try makeBundledFixture("AppTranslocation/UUID with spaces/d")
+        let bundledSource = bundledResources.appendingPathComponent("Installer", isDirectory: true)
+        let bundled = try SetupStartup.resolve(arguments: [], resources: bundledResources)
+        expect(bundled.source == bundledSource && bundled.distribution == .prebuilt && !bundled.preview,
+               "Finder startup discovers its bundled installer without a working directory or source argument")
+        let finderLaunch = try SetupStartup.resolve(arguments: ["-psn_0_12345"], resources: bundledResources)
+        expect(finderLaunch.source == bundledSource && finderLaunch.distribution == .prebuilt,
+               "Legacy Finder process serial numbers resolve only bundled resources")
+        let bundledPreview = try SetupStartup.resolve(arguments: ["--preview"], resources: bundledResources)
+        expect(bundledPreview.preview && bundledPreview.distribution == .prebuilt, "Bundled preview uses embedded resources")
+        let finderPreview = try SetupStartup.resolve(arguments: ["-psn_12_34", "--preview"], resources: bundledResources)
+        expect(finderPreview.preview, "Legacy Finder serial number can accompany preview")
+        expect(SetupDistribution.prebuilt.preparationNote.contains("não é necessário instalar um compilador"), "Prebuilt wording requires no compiler")
+        expect(SetupDistribution.source.preparationNote.contains("será compilada"), "Source wording retains compiler requirements")
+        for arguments in [["relative/path"], ["--unknown"], ["--preview", "--preview"], ["-psn_bad"],
+                          ["-psn_1_2\n"], ["-psn_1_2", "/tmp/external"], ["-psn_1_2", "--preview", "/tmp/external"],
+                          [bundledSource.path, "extra"], [bundledSource.path, "--preview", "extra"]] {
+            expect(launchFails(arguments, resources: bundledResources), "Unexpected startup arguments are rejected: \(arguments)")
+        }
+        expect(launchFails([], resources: nil), "Missing bundle resources produce an actionable startup error")
+        expect(launchFails([], resources: fixtureRoot.appendingPathComponent("absent resources")), "Missing embedded installer is rejected")
+
+        let explicitSource = try SetupStartup.resolve(arguments: [bundledSource.path], resources: nil)
+        expect(explicitSource.source == bundledSource && explicitSource.distribution == .source && !explicitSource.preview,
+               "Explicit absolute source path remains supported independently of Bundle.main")
+        let explicitPreview = try SetupStartup.resolve(arguments: [bundledSource.path, "--preview"], resources: nil)
+        expect(explicitPreview.preview && explicitPreview.distribution == .source, "Explicit source preview remains supported")
+
+        let readonlyItems = [bundledSource] + (FileManager.default.enumerator(at: bundledSource, includingPropertiesForKeys: [.isDirectoryKey])?.allObjects as? [URL] ?? [])
+        let readonlyFiles = try readonlyItems.filter { try !$0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory! }
+        let contentsBefore = try readonlyFiles.map { try Data(contentsOf: $0) }
+        for item in readonlyItems {
+            let attributes = try FileManager.default.attributesOfItem(atPath: item.path)
+            let permissions = (attributes[.posixPermissions] as? NSNumber)?.intValue ?? 0
+            try FileManager.default.setAttributes([.posixPermissions: permissions & ~0o222], ofItemAtPath: item.path)
+        }
+        defer {
+            for item in readonlyItems {
+                let isDirectory = (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+                try? FileManager.default.setAttributes([.posixPermissions: isDirectory ? 0o755 : 0o644], ofItemAtPath: item.path)
+            }
+        }
+        let readOnlyConfiguration = try SetupStartup.resolve(arguments: [], resources: bundledResources)
+        let readOnlyLogDirectory = fixtureRoot.appendingPathComponent("logs only on failure", isDirectory: true)
+        let readOnlyModel = SetupModel(source: readOnlyConfiguration.source, preview: false, distribution: .prebuilt,
+                                      failureLogDirectory: readOnlyLogDirectory, destinationCandidates: [fixtureRoot],
+                                      canUseDestination: { $0 == fixtureRoot })
+        readOnlyModel.preflight()
+        let readOnlyFinished = await waitUntil { !readOnlyModel.isBusy }
+        expect(readOnlyFinished && readOnlyModel.phase == .ready, "Preflight runs from a read-only translocation-style path with spaces")
+        let contentsAfter = try readonlyFiles.map { try Data(contentsOf: $0) }
+        expect(contentsBefore == contentsAfter, "Startup and preflight do not change embedded payload files")
+        let pathsAfter = FileManager.default.enumerator(at: bundledSource, includingPropertiesForKeys: nil)?.allObjects as? [URL] ?? []
+        expect(Set(pathsAfter.map(\.path)) == Set(readonlyItems.dropFirst().map(\.path)), "Startup and preflight create nothing inside the bundled installer")
+        expect(!FileManager.default.fileExists(atPath: readOnlyLogDirectory.path), "Successful read-only preflight creates no diagnostics folder")
+
+        let damagedResources = try makeBundledFixture("damaged bundle")
+        let damagedSource = damagedResources.appendingPathComponent("Installer", isDirectory: true)
+        let helper = damagedSource.appendingPathComponent("payload/MoveApp")
+        try FileManager.default.removeItem(at: helper)
+        expect(launchFails([], resources: damagedResources), "Missing payload helper prevents Finder startup")
+        expect(launchFails(["--preview"], resources: damagedResources), "Preview also reports missing bundled payload")
+        let externalHelper = fixtureRoot.appendingPathComponent("external helper")
+        try Data("#!/bin/bash\n".utf8).write(to: externalHelper)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: externalHelper.path)
+        try FileManager.default.createSymbolicLink(at: helper, withDestinationURL: externalHelper)
+        expect(launchFails([], resources: damagedResources), "Bundled helper symlinks cannot redirect execution outside the installer")
+        try FileManager.default.removeItem(at: helper)
+        try FileManager.default.copyItem(at: externalHelper, to: helper)
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: helper.path)
+        expect(launchFails([], resources: damagedResources), "A non-executable payload helper is rejected")
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: helper.path)
+        try writePlist(["PS12Distribution": "unknown"], to: damagedSource.appendingPathComponent("distribution.plist"))
+        expect(launchFails([], resources: damagedResources), "Unknown distribution versions are rejected")
+        try writePlist(["PS12Distribution": "prebuilt-v1"], to: damagedSource.appendingPathComponent("distribution.plist"))
+        let bundledInfo = damagedSource.appendingPathComponent("payload/PS1-2.app/Contents/Info.plist")
+        try writePlist(["CFBundleIdentifier": "unexpected.application", "CFBundleExecutable": "PS12"], to: bundledInfo)
+        expect(launchFails([], resources: damagedResources), "Unexpected central application identity is rejected")
+        try writePlist(["CFBundleIdentifier": SetupApplication.central.bundleID, "CFBundleExecutable": "../../../../external helper"], to: bundledInfo)
+        expect(launchFails([], resources: damagedResources), "Bundle executable names cannot traverse out of the application")
+        try FileManager.default.removeItem(at: bundledInfo)
+        expect(launchFails([], resources: damagedResources), "Missing central payload metadata is rejected")
+        let redirectedResources = fixtureRoot.appendingPathComponent("redirected resources", isDirectory: true)
+        try FileManager.default.createDirectory(at: redirectedResources, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: redirectedResources.appendingPathComponent("Installer"), withDestinationURL: bundledSource)
+        expect(launchFails([], resources: redirectedResources), "Bundled Installer directory cannot redirect outside the application resources")
+
         func makeModel(source: URL, preview: Bool) -> SetupModel {
             SetupModel(source: source, preview: preview, destinationCandidates: [destination], canUseDestination: { $0 == destination })
         }
@@ -157,6 +269,21 @@ struct SetupWizardTests {
         expect(installFailureFinished && retry.phase == .failed && retry.exitCode == 8, "Failed install reports a nonzero backend status")
         expect(retry.showLog && retry.log.text.hasSuffix("fixture install failure without newline\n"), "Install failure exposes drained stderr")
         expect(!retry.canInstall && runCount(failureSource) == 3, "Install failure requires another preflight before retry")
+
+        let savedLogs = fixtureRoot.appendingPathComponent("User Logs/PS1-2 Installer", isDirectory: true)
+        let loggedFailure = SetupModel(source: failureSource, preview: false, failureLogDirectory: savedLogs,
+                                       destinationCandidates: [destination], canUseDestination: { $0 == destination })
+        try Data().write(to: failureSource.appendingPathComponent("fail-check"))
+        loggedFailure.preflight()
+        let loggedFailureFinished = await waitUntil { !loggedFailure.isBusy }
+        expect(loggedFailureFinished && loggedFailure.phase == .failed && loggedFailure.failureLogURL != nil, "Opt-in failure diagnostics are preserved outside the installer source")
+        let savedLogURL = loggedFailure.failureLogURL!
+        let savedLog = try String(contentsOf: savedLogURL, encoding: .utf8)
+        expect(savedLog.contains("código 7") && savedLog.contains("fixture failure without newline"), "Saved diagnostics include backend status and bounded output")
+        let logPermissions = try FileManager.default.attributesOfItem(atPath: savedLogURL.path)[.posixPermissions] as? NSNumber
+        expect(logPermissions?.intValue == 0o600, "Failure diagnostics are readable only by the current user")
+        let logDirectoryPermissions = try FileManager.default.attributesOfItem(atPath: savedLogs.path)[.posixPermissions] as? NSNumber
+        expect(logDirectoryPermissions?.intValue == 0o700, "New diagnostics directories are private")
 
         let previewSource = try makeFixture("preview fixture")
         let preview = makeModel(source: previewSource, preview: true)

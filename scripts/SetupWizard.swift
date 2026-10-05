@@ -1,6 +1,110 @@
 import AppKit
 import SwiftUI
 
+enum SetupDistribution {
+    case source, prebuilt
+
+    var preparationNote: String {
+        switch self {
+        case .source: return "A central será compilada neste Mac; são necessárias as ferramentas de linha de comando da Apple."
+        case .prebuilt: return "A central já está pronta: não é necessário instalar um compilador, o Xcode ou as ferramentas de linha de comando."
+        }
+    }
+}
+
+struct SetupLaunchConfiguration {
+    let source: URL
+    let preview: Bool
+    let distribution: SetupDistribution
+}
+
+struct SetupLaunchError: LocalizedError {
+    let message: String
+    var errorDescription: String? { message }
+}
+
+enum SetupStartup {
+    // Finder may supply a legacy process serial number. It is never a source
+    // argument, and cannot be combined with an external installer path.
+    static func resolve(arguments: [String], resources: URL?, fileManager: FileManager = .default) throws -> SetupLaunchConfiguration {
+        var options = arguments
+        if let first = options.first, first.hasPrefix("-psn_") {
+            guard first.range(of: #"^-psn_[0-9]+_[0-9]+$"#, options: .regularExpression) != nil else {
+                throw usageError
+            }
+            options.removeFirst()
+            guard options.isEmpty || options == ["--preview"] else { throw usageError }
+        }
+        let preview = options.last == "--preview"
+        if preview { options.removeLast() }
+        let configuration: SetupLaunchConfiguration
+        if options.isEmpty {
+            guard let resources, resources.isFileURL, resources.path.hasPrefix("/") else {
+                throw SetupLaunchError(message: "Não encontramos os recursos do instalador. Abra o aplicativo Install PS1-2 completo no disco baixado.")
+            }
+            let installer = resources.appendingPathComponent("Installer", isDirectory: true).standardizedFileURL
+            let resourceRoot = resources.resolvingSymlinksInPath().standardizedFileURL.path
+            guard installer.resolvingSymlinksInPath().standardizedFileURL.path.hasPrefix(resourceRoot + "/") else {
+                throw SetupLaunchError(message: "Os arquivos do instalador precisam estar dentro do aplicativo. Baixe uma nova cópia do disco de instalação.")
+            }
+            configuration = SetupLaunchConfiguration(source: installer,
+                                                     preview: preview, distribution: .prebuilt)
+        } else if options.count == 1, options[0].hasPrefix("/") {
+            configuration = SetupLaunchConfiguration(source: URL(fileURLWithPath: options[0], isDirectory: true).standardizedFileURL,
+                                                     preview: preview, distribution: .source)
+        } else {
+            throw usageError
+        }
+        try validate(source: configuration.source, distribution: configuration.distribution, fileManager: fileManager)
+        return configuration
+    }
+
+    static func validate(source: URL, distribution: SetupDistribution, fileManager: FileManager = .default) throws {
+        guard source.isFileURL, source.path.hasPrefix("/"), isDirectory(source, fileManager: fileManager) else {
+            throw SetupLaunchError(message: "A pasta do instalador não está disponível. Mantenha os arquivos do download juntos e abra o instalador novamente.")
+        }
+        let root = source.resolvingSymlinksInPath().standardizedFileURL
+        func requireFile(_ relativePath: String, executable: Bool = false) throws -> URL {
+            let url = source.appendingPathComponent(relativePath)
+            let resolved = url.resolvingSymlinksInPath().standardizedFileURL
+            let contained = resolved.path.hasPrefix(root.path + "/")
+            let regular = (try? resolved.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
+            guard (distribution == .source || contained), regular, fileManager.isReadableFile(atPath: url.path),
+                  !executable || fileManager.isExecutableFile(atPath: url.path) else {
+                throw SetupLaunchError(message: "O instalador está incompleto ou danificado: \(relativePath). Baixe uma nova cópia e abra o aplicativo completo.")
+            }
+            return url
+        }
+        _ = try requireFile("install.sh")
+        guard distribution == .prebuilt else { return }
+        let manifestURL = try requireFile("distribution.plist")
+        guard let manifest = try? PropertyListSerialization.propertyList(from: Data(contentsOf: manifestURL), format: nil) as? [String: Any],
+              manifest["PS12Distribution"] as? String == "prebuilt-v1" else {
+            throw SetupLaunchError(message: "Esta distribuição do instalador não é compatível. Baixe uma nova cópia do disco de instalação.")
+        }
+        let appPath = "payload/PS1-2.app"
+        let infoURL = try requireFile(appPath + "/Contents/Info.plist")
+        guard let info = try? PropertyListSerialization.propertyList(from: Data(contentsOf: infoURL), format: nil) as? [String: Any],
+              info["CFBundleIdentifier"] as? String == SetupApplication.central.bundleID,
+              let executable = info["CFBundleExecutable"] as? String, !executable.isEmpty,
+              executable != ".", executable != "..", !executable.contains("/"), !executable.contains("\0") else {
+            throw SetupLaunchError(message: "A central incluída no instalador está incompleta ou tem uma identidade inesperada. Baixe uma nova cópia do disco de instalação.")
+        }
+        _ = try requireFile(appPath + "/Contents/MacOS/" + executable, executable: true)
+        _ = try requireFile("payload/MoveApp", executable: true)
+        _ = try requireFile("payload/InspectMachO", executable: true)
+    }
+
+    private static func isDirectory(_ url: URL, fileManager: FileManager) -> Bool {
+        var directory: ObjCBool = false
+        return fileManager.fileExists(atPath: url.path, isDirectory: &directory) && directory.boolValue
+    }
+
+    private static var usageError: SetupLaunchError {
+        SetupLaunchError(message: "Abra Install PS1-2.app no Finder ou execute SetupWizard /caminho/absoluto/do/projeto [--preview]. A opção --preview também funciona com os recursos incluídos no aplicativo.")
+    }
+}
+
 // install.sh remains the only installation authority; arguments are never interpolated into a shell command.
 enum SetupCommand {
     static func arguments(source: URL, destination: URL, check: Bool) -> [String] {
@@ -105,17 +209,22 @@ final class SetupModel: ObservableObject {
     @Published var notice: String?
     @Published var showLog = false
     @Published private(set) var destination: URL
+    @Published private(set) var failureLogURL: URL?
     let source: URL
     let preview: Bool
+    let distribution: SetupDistribution
     private let canUseDestination: (URL) -> Bool
+    private let failureLogDirectory: URL?
     private var process: Process?
     private(set) var exitCode: Int32 = 0
 
-    init(source: URL, preview: Bool,
+    init(source: URL, preview: Bool, distribution: SetupDistribution = .source, failureLogDirectory: URL? = nil,
          destinationCandidates: [URL] = SetupDestination.candidates(home: FileManager.default.homeDirectoryForCurrentUser),
          canUseDestination: @escaping (URL) -> Bool = SetupDestination.isWritableDirectory) {
         self.source = source
         self.preview = preview
+        self.distribution = distribution
+        self.failureLogDirectory = failureLogDirectory
         self.canUseDestination = canUseDestination
         self.destination = SetupDestination.preferred(candidates: destinationCandidates, canUse: canUseDestination)
         if preview { phase = .ready; status = "Prévia visual · nenhuma instalação será executada." }
@@ -174,10 +283,16 @@ final class SetupModel: ObservableObject {
         }
     }
     private func run(check: Bool) {
-        guard source.path.hasPrefix("/"), FileManager.default.fileExists(atPath: source.appendingPathComponent("install.sh").path) else {
+        failureLogURL = nil
+        do {
+            try SetupStartup.validate(source: source, distribution: distribution)
+        } catch {
             phase = .failed; exitCode = 1
-            status = "Não encontramos install.sh na pasta do projeto."
-            notice = "Mantenha todos os arquivos do download juntos e abra o instalador novamente."
+            status = "Não foi possível conferir os arquivos do instalador."
+            notice = error.localizedDescription
+            log = SetupLog()
+            log.append(error.localizedDescription + "\n")
+            showLog = true
             reportFailure()
             return
         }
@@ -187,6 +302,7 @@ final class SetupModel: ObservableObject {
         status = check ? "Conferindo os requisitos do Mac…" : "Iniciando a instalação…"
         showLog = !check
         log = SetupLog()
+        failureLogURL = nil
         let child = Process()
         child.executableURL = URL(fileURLWithPath: "/bin/bash")
         child.arguments = SetupCommand.arguments(source: source, destination: destination, check: check)
@@ -259,10 +375,21 @@ final class SetupModel: ObservableObject {
         }
     }
     private func reportFailure() {
-        // The bootstrap captures stderr inside its own mktemp directory. Keep
-        // the bounded failure details available even after this window closes.
+        // The source bootstrap captures stderr. Finder launches additionally
+        // preserve bounded diagnostics outside the read-only installer bundle.
         let details = "\nPS1/2 · diagnóstico (código \(exitCode))\n\(status)\n\(notice ?? "")\n\(log.text)\n"
         try? FileHandle.standardError.write(contentsOf: Data(details.utf8))
+        guard let failureLogDirectory else { return }
+        do {
+            try FileManager.default.createDirectory(at: failureLogDirectory, withIntermediateDirectories: true,
+                                                    attributes: [.posixPermissions: 0o700])
+            let url = failureLogDirectory.appendingPathComponent("installation-\(UUID().uuidString).log")
+            if FileManager.default.createFile(atPath: url.path, contents: Data(details.utf8), attributes: [.posixPermissions: 0o600]) {
+                failureLogURL = url
+            }
+        } catch {
+            // Copy details remains available if the user's Logs folder is unavailable.
+        }
     }
 }
 
@@ -362,6 +489,7 @@ struct SetupView: View {
             Text("A central organiza sua biblioteca e abre os jogos nos emuladores dedicados. Este assistente instala o PS1/2 e baixa DuckStation (PS1) e PCSX2 (PS2), de fontes oficiais, somente se estiverem ausentes.")
                 .font(.system(size: 13)).foregroundStyle(muted).lineSpacing(4)
             VStack(alignment: .leading, spacing: 8) {
+                note(model.distribution.preparationNote)
                 note("Emuladores existentes são mantidos; a central anterior recebe uma cópia de segurança.")
                 note("Jogos, BIOS, saves e configurações pessoais não são alterados.")
                 note("Você fornece os jogos e a BIOS e conclui a configuração inicial de cada emulador.")
@@ -411,6 +539,10 @@ struct SetupView: View {
                         .frame(maxWidth: .infinity, alignment: .leading).padding(10)
                 }.frame(height: 170).background(.black.opacity(0.3), in: RoundedRectangle(cornerRadius: 7))
                 Button("Copiar detalhes") { model.copyLog() }.buttonStyle(SetupButtonStyle())
+                if let url = model.failureLogURL {
+                    Text("Diagnóstico salvo em \(url.path)").font(.system(size: 10)).foregroundStyle(muted)
+                        .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                }
             }.padding(.top, 9)
         } label: { Text("Detalhes técnicos").font(.system(size: 12)).foregroundStyle(muted) }.tint(muted)
     }
@@ -508,7 +640,7 @@ final class SetupDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
     func applicationWillTerminate(_ notification: Notification) {
-        // Preserve failure diagnostics in the bootstrap's temporary bundle.
+        // Return backend failure status to command-line/bootstrap callers.
         exit(model.exitCode)
     }
     private func explainActiveInstallation() {
@@ -522,14 +654,26 @@ final class SetupDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 @main
 struct SetupWizardMain {
     @MainActor static func main() {
-        let arguments = Array(CommandLine.arguments.dropFirst())
-        guard let path = arguments.first, path.hasPrefix("/"), arguments.count == 1 || (arguments.count == 2 && arguments[1] == "--preview") else {
-            fputs("Usage: SetupWizard /absolute/path/to/ps1-2-emulator [--preview]\n", stderr)
-            exit(2)
-        }
         let application = NSApplication.shared
         application.setActivationPolicy(.regular)
-        let model = SetupModel(source: URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL, preview: arguments.contains("--preview"))
+        let configuration: SetupLaunchConfiguration
+        do {
+            configuration = try SetupStartup.resolve(arguments: Array(CommandLine.arguments.dropFirst()), resources: Bundle.main.resourceURL)
+        } catch {
+            fputs(error.localizedDescription + "\n", stderr)
+            let alert = NSAlert()
+            alert.alertStyle = .critical
+            alert.messageText = "Não foi possível abrir o instalador."
+            alert.informativeText = error.localizedDescription
+            alert.addButton(withTitle: "Fechar")
+            application.activate(ignoringOtherApps: true)
+            alert.runModal()
+            exit(2)
+        }
+        let logDirectory = configuration.distribution == .prebuilt
+            ? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/PS1-2 Installer", isDirectory: true) : nil
+        let model = SetupModel(source: configuration.source, preview: configuration.preview,
+                               distribution: configuration.distribution, failureLogDirectory: logDirectory)
         let delegate = SetupDelegate(model: model)
         application.delegate = delegate
         withExtendedLifetime(delegate) { application.run() }
