@@ -256,6 +256,36 @@ struct CoverImageCacheTests {
         stats = await snapshotRepairedRestart.statistics()
         check(snapshotRecoveredOffline?.width == 160 && stats.diskHits == 1 && stats.sourceDecodes == 0,
               "Repaired snapshot persists and can subsequently reopen offline")
+
+        let sharedSizeSource = root.appendingPathComponent("shared-size.png")
+        let sharedSizeDisk = root.appendingPathComponent("shared-size-cache")
+        try writeImage(sharedSizeSource, width: 600, height: 900, red: 0.4)
+        let sharedSizeSeed = CoverImageCache(directory: sharedSizeDisk)
+        _ = await sharedSizeSeed.image(at: sharedSizeSource, maxPixelSize: 320, snapshotID: "shared-snapshot")
+        try manager.removeItem(at: sharedSizeSource)
+        let sharedSizeOffline = CoverImageCache(directory: sharedSizeDisk)
+        let miniOffline = await sharedSizeOffline.image(at: sharedSizeSource, maxPixelSize: 108, snapshotID: "shared-snapshot")
+        stats = await sharedSizeOffline.statistics()
+        check(miniOffline?.height == 108 && miniOffline?.width == 72 && stats.sourceDecodes == 0 && stats.diskHits == 1,
+              "Offline now-playing size derives from canonical 320px saved thumbnail without reading the source")
+        check(stats.diskEntries == 2, "Derived thumbnail persists at its own requested size")
+        let sharedSizeRestarted = CoverImageCache(directory: sharedSizeDisk)
+        let miniRestarted = await sharedSizeRestarted.image(at: sharedSizeSource, maxPixelSize: 108, snapshotID: "shared-snapshot")
+        stats = await sharedSizeRestarted.statistics()
+        check(miniRestarted?.height == 108 && stats.diskHits == 1 && stats.sourceDecodes == 0,
+              "Derived thumbnail reopens directly after restart")
+        let wrongSizeSnapshot = await sharedSizeRestarted.image(at: sharedSizeSource, maxPixelSize: 108, snapshotID: "different-snapshot")
+        check(wrongSizeSnapshot == nil, "Larger thumbnail fallback cannot cross a snapshot boundary")
+        let largeOffline = await sharedSizeRestarted.image(at: sharedSizeSource, maxPixelSize: 640, snapshotID: "shared-snapshot")
+        stats = await sharedSizeRestarted.statistics()
+        check(largeOffline?.height == 320 && stats.sourceDecodes == 0 && stats.diskHits == 2,
+              "Large offline card keeps the best saved lower-resolution cover instead of a blank")
+        check(stats.diskEntries == 2, "Lower-resolution fallback never persists a misleading high-resolution cache entry")
+        try writeImage(sharedSizeSource, width: 600, height: 900, red: 0.4)
+        let upgraded = await sharedSizeRestarted.image(at: sharedSizeSource, maxPixelSize: 640, snapshotID: "shared-snapshot")
+        stats = await sharedSizeRestarted.statistics()
+        check(upgraded?.height == 640 && stats.sourceDecodes == 1 && stats.diskEntries == 3,
+              "Reconnected original upgrades the same high-resolution request rather than retaining its offline fallback")
         print("PASS: \(checks) cover-cache checks (live/snapshot modes, memory, disk, coalescing, budgets and orientation)")
     }
 

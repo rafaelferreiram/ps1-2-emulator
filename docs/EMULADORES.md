@@ -4,19 +4,20 @@ The PS1/2 app in this repository is only the launcher and catalog. DuckStation a
 
 ## Recommended path: use the launcher installer
 
-After cloning the repository, open Terminal in the `ps1-2-emulator` folder:
+After downloading the ZIP and extracting the whole folder, double-click **Instalar.command**. Or, after cloning, open Terminal in the `ps1-2-emulator` folder:
 
 ```bash
-bash install.sh --check
-bash install.sh
+bash Instalar.command
 ```
 
-The first command only checks prerequisites. It does not download, build or change files. The second asks for confirmation, builds the launcher and downloads **only the emulators it does not find**. You can also double-click `Instalar.command` in Finder to run the installer in Terminal.
+This opens the native **PS1/2** setup window with a PS2-inspired theme. If Apple's Command Line Tools are missing, the startup first explains them in Terminal and offers to open Apple's installer with your consent. Complete that installation, then continue. In the setup window, check the destination, wait for the prerequisite check and click **Instalar**. It builds the launcher and downloads **only the emulators it does not find**. At the end, use the explicit buttons to open each app and finish its first setup.
 
-- Default destination: `/Applications`. To install in your home Applications folder, first run `mkdir -p "$HOME/Applications"` and then `bash install.sh --destination "$HOME/Applications"`.
+For text-only installation use `bash install.sh`. For diagnosis without downloading, compiling or installing, use `bash install.sh --check`.
+
+- Default destination: `/Applications`. The setup window lets you select another existing, writable folder. To install in your home Applications folder, create that folder in Finder and choose it, or run `mkdir -p "$HOME/Applications"` and then `bash install.sh --destination "$HOME/Applications"`.
 - Sources: the official `latest` release of `stenzek/duckstation` and the latest stable release of `PCSX2/pcsx2`, through the GitHub API. The installer checks the SHA-256 from the API, the bundle ID and the signature before installing. It does not skip a failed check.
 - Apps with the expected name and identity in `/Applications`, `~/Applications` or the chosen destination are kept. The script does not update existing emulators or change their settings.
-- It does not install Homebrew, does not use `sudo`, does not restart the Mac, does not accept licenses or Rosetta, does not download games or BIOS, and does not clear quarantine on downloads. It also does not open apps for you.
+- It does not install Homebrew, does not use `sudo`, does not restart the Mac, does not accept licenses or Rosetta, does not download games or BIOS, and does not clear quarantine on downloads. Apps open only when you choose their buttons or open them yourself. It does not clear the system icon cache or restart the Dock.
 
 After installing, open **DuckStation** and **PCSX2** from Finder, finish the steps below and try one game in each. For clone instructions, launcher requirements, options and restoring a previous version, see [Detailed installation in the README](../README.md#detailed-installation).
 
@@ -97,8 +98,10 @@ This table describes the launcher's scanner, not a compatibility guarantee from 
 
 ## Common problems
 
-- **`swiftc` or the SDK was not found:** run `xcode-select --install`, finish the install and run `bash install.sh --check` again.
-- **No permission to install in `/Applications`:** use your home folder with `--destination "$HOME/Applications"` after creating it. Do not use `sudo` as a shortcut.
+- **`swiftc` or the SDK was not found:** open `Instalar.command` and follow the Apple tools guidance, or run `xcode-select --install`, finish the install and run `bash install.sh --check` again. Apple setup and any license confirmation remain your responsibility.
+- **No permission to install in `/Applications`:** select another writable folder in the setup window, or use your home folder with `--destination "$HOME/Applications"` after creating it. Do not use `sudo` as a shortcut.
+- **The Finder shortcut does not start:** keep it inside the extracted project folder, open Terminal in that folder and run `bash Instalar.command`. If macOS blocks a downloaded file, verify the source and use the security options offered by macOS; do not disable system protections.
+- **The setup reports an error:** open its details, review the log and use the retry action after fixing the cause. Avoid closing the installer mid-install; it prevents a normal close while files are being published. The log can contain local paths, so review it before sharing.
 - **Download, SHA-256 or signature failure:** do not bypass the check. Confirm your connection, look at the official release and try again. A changed package may require an installer update. If the GitHub API rate-limits you, wait or install manually from the official source.
 - **"Could not find DuckStation/PCSX2":** check the names and paths in `/Applications` or `~/Applications`. Open each emulator once from Finder. The launcher prefers the default path and also looks up the app by the bundle ID registered with macOS.
 - **"Reading games and covers…" for a long time:** check whether macOS is waiting for you to allow access to the SSD.

@@ -12,6 +12,8 @@ xcrun swiftc -D LAUNCHER_MODEL_TESTS -O -parse-as-library -target arm64-apple-ma
   "$launcher_source/GameCatalogView.swift" "$launcher_source/NowPlayingGameView.swift" \
   "$launcher_source/CatalogCache.swift" "$launcher_source/CoverImageCache.swift" \
   "$launcher_source/GameLaunchCheck.swift" \
+  "$launcher_source/PersonalLibrary.swift" "$launcher_source/ConsoleExperience.swift" \
+  "$launcher_source/SessionLifecycle.swift" "$launcher_source/LauncherDialogs.swift" \
   "$launcher_source/StorageNoticeView.swift" \
   "$launcher_source/LibrarySettings.swift" "$launcher_source/LibrarySettingsView.swift" "$launcher_source/ResponsiveLayout.swift" \
   "$launcher_source/tests/LauncherPreviewTests.swift" \

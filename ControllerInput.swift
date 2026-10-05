@@ -195,10 +195,6 @@ final class ControllerInput {
 
         controller = next
         next.handlerQueue = .main
-        bind(pad.dpad.up, name: "up") { ($0.onVerticalMove ?? $0.onMove)(-1) }
-        bind(pad.dpad.left, name: "left") { $0.onMove(-1) }
-        bind(pad.dpad.down, name: "down") { ($0.onVerticalMove ?? $0.onMove)(1) }
-        bind(pad.dpad.right, name: "right") { $0.onMove(1) }
         // GameController uses the physical south/east positions: Cross/Circle on DualSense.
         bind(pad.buttonA, name: "confirm") { $0.onConfirm() }
         bind(pad.buttonB, name: "back") { $0.onBack() }
@@ -215,6 +211,12 @@ final class ControllerInput {
         bindTrigger(pad.rightTrigger, isLeft: false)
         let bindingGeneration = generation
         pad.leftThumbstick.valueChangedHandler = { [weak self] _, _, _ in
+            Task { @MainActor in
+                guard let self, self.started, self.generation == bindingGeneration else { return }
+                self.refreshAnalogNavigation()
+            }
+        }
+        pad.dpad.valueChangedHandler = { [weak self] _, _, _ in
             Task { @MainActor in
                 guard let self, self.started, self.generation == bindingGeneration else { return }
                 self.refreshAnalogNavigation()
@@ -273,9 +275,12 @@ final class ControllerInput {
 
     /// Also called on focus/window changes; never reads the games or SSD.
     func refreshAnalogNavigation() {
-        guard started, let stick = controller?.extendedGamepad?.leftThumbstick else { return }
+        guard started, let pad = controller?.extendedGamepad else { return }
+        let stick = pad.leftThumbstick
         let context = NSApp.isActive ? navigationContext() : nil
-        let x = stick.xAxis.value, y = stick.yAxis.value
+        let dpadActive = abs(pad.dpad.xAxis.value) > 0.5 || abs(pad.dpad.yAxis.value) > 0.5
+        let x = dpadActive ? pad.dpad.xAxis.value : stick.xAxis.value
+        let y = dpadActive ? pad.dpad.yAxis.value : stick.yAxis.value
         let movement = analog.sample(x: x, y: y, time: ProcessInfo.processInfo.systemUptime,
                                      context: context, repeats: repeatsAnalog())
         switch movement {
@@ -312,6 +317,7 @@ final class ControllerInput {
         analog = AnalogNavigation()
         if let pad = controller?.extendedGamepad {
             pad.leftThumbstick.valueChangedHandler = nil
+            pad.dpad.valueChangedHandler = nil
             for button in [pad.dpad.up, pad.dpad.left, pad.dpad.down, pad.dpad.right,
                            pad.buttonA, pad.buttonB, pad.buttonX, pad.buttonY,
                            pad.leftShoulder, pad.rightShoulder] {

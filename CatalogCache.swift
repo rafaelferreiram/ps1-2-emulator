@@ -3,8 +3,8 @@ import CryptoKit
 import Darwin
 
 /// Stores the last successful FULL LOAD, never ROM data. Normal browsing reads
-/// only saved memory/JSON, even with the game folder unavailable. Only a first load or
-/// explicit forced refresh traverses game/artwork folders and rebuilds metadata.
+/// only saved memory/JSON, even with the game folder unavailable. A first load or
+/// forced refresh (explicit or throttled background discovery) rebuilds metadata.
 actor CatalogCache {
     static let shared = CatalogCache()
 
@@ -60,8 +60,9 @@ actor CatalogCache {
 
     func statistics() -> Statistics { counters }
 
-    func load(_ source: CatalogSource, force: Bool = false) async -> CatalogScanResult {
-        let outcome = await loadOutcome(source, force: force)
+    func load(_ source: CatalogSource, force: Bool = false,
+              priority: TaskPriority = .userInitiated) async -> CatalogScanResult {
+        let outcome = await loadOutcome(source, force: force, priority: priority)
         return CatalogScanResult(games: outcome.inventory.result.games, warning: outcome.inventory.result.warning,
                                  snapshotID: outcome.snapshot?.fingerprint)
     }
@@ -79,10 +80,22 @@ actor CatalogCache {
         await cachedArtworkForLoadedGame(path: path, source: source)?.url
     }
 
+    /// Cover-independent ownership for session identity/history. The monitor must
+    /// still confirm the process and loaded file; saved membership alone never
+    /// claims that a game is running. Ambiguous playlist owners are not guessed.
+    func cachedGameForLoadedGame(path: String, source: CatalogSource) async -> CatalogGame? {
+        await cachedOwner(path: path, source: source)?.game
+    }
+
     /// Resolve exactly one saved CUE/CCD/playlist owner. This intentionally does
     /// not stat the loaded game or artwork; the emulator monitor verifies the
     /// active game, and the artwork cache serves that snapshot's saved thumbnail.
     func cachedArtworkForLoadedGame(path: String, source: CatalogSource) async -> CachedArtwork? {
+        guard let owner = await cachedOwner(path: path, source: source), let cover = owner.game.coverURL else { return nil }
+        return CachedArtwork(url: cover, snapshotID: owner.snapshotID)
+    }
+
+    private func cachedOwner(path: String, source: CatalogSource) async -> (game: CatalogGame, snapshotID: String)? {
         guard ["ps1", "ps2"].contains(source.consoleKey), path.hasPrefix("/"),
               let snapshot = await cachedSnapshot(source) else { return nil }
         let file = Self.memberPath(path, snapshot: snapshot, source: source)
@@ -90,8 +103,8 @@ actor CatalogCache {
         let matches = inventory.result.games.filter { game in
             inventory.members[game.id]?.contains(where: { Self.pathIdentity($0) == file }) == true
         }
-        guard matches.count == 1, let cover = matches[0].coverURL else { return nil }
-        return CachedArtwork(url: cover, snapshotID: snapshot.fingerprint)
+        guard matches.count == 1 else { return nil }
+        return (matches[0], snapshot.fingerprint)
     }
 
     /// Disk lookup only: used for now-playing art, where absent cache must never
@@ -117,7 +130,7 @@ actor CatalogCache {
         return stored
     }
 
-    private func loadOutcome(_ source: CatalogSource, force: Bool) async -> Outcome {
+    private func loadOutcome(_ source: CatalogSource, force: Bool, priority: TaskPriority) async -> Outcome {
         let key = Self.key(for: source)
         if !force, let snapshot = entries[key], Self.valid(snapshot, key: key, source: source) {
             counters.memoryHits += 1
@@ -128,14 +141,14 @@ actor CatalogCache {
             // A forced refresh must not silently turn into a pending cache hit.
             if force && !flight.force {
                 _ = await complete(flight, key: key)
-                return await loadOutcome(source, force: true)
+                return await loadOutcome(source, force: true, priority: priority)
             }
             counters.coalescedRequests += 1
             return await complete(flight, key: key)
         }
         let candidate = entries[key]
         let directory = self.directory
-        let task = Task.detached(priority: .userInitiated) {
+        let task = Task.detached(priority: priority) {
             Self.fetch(source, key: key, directory: directory, candidate: candidate, force: force)
         }
         let flight = Flight(id: UUID(), force: force, task: task)

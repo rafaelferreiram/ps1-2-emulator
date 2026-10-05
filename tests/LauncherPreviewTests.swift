@@ -259,15 +259,16 @@ struct LauncherPreviewTests {
         require(configurable.catalogConsole == nil, "back returns to the console menu before reopening")
         configurable.selected = .ps1
         configurable.showCatalog()
-        require(configurable.catalogConsole == .ps1 && catalog.loading.contains("ps1"),
-                "opening a connected library rescans instead of showing only the saved list")
+        require(configurable.catalogConsole == .ps1 && !catalog.loading.contains("ps1"),
+                "rapid catalog reopen reuses a fresh snapshot without another scan")
+        configurable.reloadCatalog()
         for _ in 0..<500 where catalog.loading.contains("ps1") {
             try await Task.sleep(for: .milliseconds(10))
         }
         require(catalog.games["ps1"]?.contains { $0.title == "Added Later" } == true,
                 "a PS1 game added after the last visit appears in the catalog")
         let opened = await cache.statistics().scans
-        require(opened == reloaded + 1, "reopening a connected library scans once")
+        require(opened == reloaded + 1, "explicit refresh bypasses automatic throttle and scans once")
         configurable.catalogConsole = .ps1
         let staleGame = CatalogGame(id: oldPS1.path + "/Old.iso", consoleKey: "ps1", title: "Old library",
                                     fileURL: oldPS1.appendingPathComponent("Old.iso"), coverURL: nil)
@@ -281,6 +282,112 @@ struct LauncherPreviewTests {
         let resetStats = await cache.statistics()
         require(resetStats.scans == opened, "reset does not scan the disconnected default folder")
         require(configurable.launching == nil && configurable.launchID == nil, "folder integration never launches emulators")
+        // Console experience regression tests use only the private fixture tree.
+        let personal = PersonalLibrary(defaults: defaults)
+        let uiSettings = GameLibrarySettings(defaults: defaults)
+        _ = try uiSettings.setFolder(library, for: "ps1")
+        _ = try uiSettings.setFolder(library, for: "ps2")
+        let uiCatalog = GameCatalog(cache: cache, coverCache: CoverImageCache(directory: root.appendingPathComponent("UIcovers")))
+        let ui = LauncherModel(catalog: uiCatalog, librarySettings: uiSettings,
+                               organizer: CatalogOrganizer(defaults: defaults), personalLibrary: personal,
+                               experience: ExperiencePreferences(defaults: defaults), startServices: false)
+        ui.finishBoot()
+        ui.setGameFolder(library, for: .ps2)
+        // setFolder above already selected the root; explicitly give the fixture
+        // source to the supplied catalog and scan without an installed library.
+        for console in Console.allCases {
+            uiCatalog.setSource(CatalogSource.installed(console.rawValue, root: library)!, restoreSaved: false)
+            uiCatalog.refresh(console.rawValue, force: true)
+        }
+        for _ in 0..<500 where !uiCatalog.loading.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+        ui.selected = .ps2
+        ui.confirm()
+        require(ui.catalogConsole == .ps2 && ui.launching == nil, "main X enters library, not emulator")
+        guard let fixture = ui.listedGames.first else { fatalError("No fixture games") }
+        ui.notice = "Earlier action"
+        ui.reloadCatalog()
+        require(ui.notice.isEmpty, "catalog reload does not leave a stale loading notice on the main menu")
+        ui.selectGame(fixture)
+        ui.toggleSelectedFavorite()
+        require(ui.libraryState(for: .ps2).favoriteIDs.contains(fixture.id), "favorite stores current library game")
+        ui.setCatalogFilter(.favorites)
+        require(ui.listedGames.map(\.id) == [fixture.id], "favorites filter integrates with navigation")
+        ui.setCatalogQuery("NO MATCH EXPECTED")
+        require(ui.listedGames.isEmpty, "search filters without altering the snapshot")
+        ui.catalogCommand = .clearSearch
+        ui.setCatalogQuery("")
+        require(ui.catalogCommand == .filter, "clearing search removes invisible toolbar focus")
+        ui.setCatalogFilter(.all)
+        ui.selectGame(fixture)
+        let emptyFolder = ui.organizer.createFolder(named: "Empty", console: "ps2")!
+        ui.selectCatalogSection(emptyFolder.id.uuidString)
+        ui.confirm()
+        require(ui.catalogSections(for: .ps2).first?.collapsed == true, "X collapses empty header")
+        ui.confirm()
+        require(ui.catalogSections(for: .ps2).first?.collapsed == false, "X reopens empty header without mouse")
+        ui.selectGame(fixture)
+        let selection = ui.gameSelection
+        ui.launching = .ps2
+        ui.moveVertical(1)
+        ui.move(1)
+        require(ui.gameSelection == selection, "launch overlay blocks vertical and horizontal movement")
+        ui.launching = nil
+        ui.errorMessage = "Fixture error"
+        ui.moveVertical(-1)
+        require(ui.gameSelection == selection, "error blocks underlying navigation")
+        ui.confirm()
+        require(ui.errorMessage == nil, "controller can dismiss launcher error")
+        var accepted = false
+        ui.dialog = LauncherDialog(title: "Fixture", message: "No external action", acceptTitle: "Accept") { accepted = true }
+        ui.dialogAcceptSelected = false
+        ui.confirm()
+        require(!accepted && ui.dialog == nil, "confirmation defaults to safe cancel")
+        ui.dialog = LauncherDialog(title: "Fixture", message: "No external action", acceptTitle: "Accept") { accepted = true }
+        ui.move(1)
+        ui.confirm()
+        require(accepted, "controller can choose and confirm launcher dialog")
+        ui.showSessionMenu()
+        require(ui.showingSessionMenu && ui.previewConsole == nil, "session menu pauses previews")
+        ui.back()
+        ui.showExperienceSettings()
+        ui.moveVertical(1)
+        ui.confirm()
+        require(ui.experience.soundsEnabled, "controller toggles sound preference")
+        ui.back()
+        require(!ui.showingExperienceSettings, "Circle dismisses experience settings")
+        ui.experience.soundsEnabled = false
+        ui.personalLibrary.rememberSelection(gameID: fixture.id, console: "ps2", root: library)
+        let alternate = root.appendingPathComponent("Alternate")
+        try FileManager.default.createDirectory(at: alternate, withIntermediateDirectories: true)
+        ui.setGameFolder(alternate, for: .ps2)
+        ui.setGameFolder(library, for: .ps2)
+        require(ui.gameSelection["ps2"] == fixture.id, "switching back to a root restores remembered selection")
+        for _ in 0..<500 where !uiCatalog.loading.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+        // Rendering fixtures is opt-in. It never opens a real game or window.
+        if ProcessInfo.processInfo.environment["PS12_RENDER_PREVIEWS"] == "1" {
+            let output = FileManager.default.temporaryDirectory.appendingPathComponent("PS12-UI-\(UUID().uuidString)")
+            try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+            for console in Console.allCases {
+                ui.selected = console
+                ui.catalogConsole = console
+                ui.catalogCommand = nil
+                ui.selectedCatalogFolderID = nil
+                ui.setCatalogFilter(.all)
+                ui.setCatalogQuery("")
+                for size in [CGSize(width: 1000, height: 650), CGSize(width: 1512, height: 982)] {
+                    let renderer = ImageRenderer(content: LauncherView(model: ui).frame(width: size.width, height: size.height))
+                    renderer.scale = 1
+                    guard let image = renderer.cgImage,
+                          let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else {
+                        fatalError("Could not render themed catalog")
+                    }
+                    let file = output.appendingPathComponent("\(console.rawValue)-\(Int(size.width)).png")
+                    try png.write(to: file)
+                    require(image.width == Int(size.width) && image.height == Int(size.height), "catalog renderer matches window size")
+                }
+            }
+            print("UI previews: \(output.path)")
+        }
         print("PASS: \(assertions) launcher-selection, folder integration, offline-storage dialog and on-demand file validation assertions")
     }
 }

@@ -26,6 +26,8 @@ xcrun swiftc -O -parse-as-library -target arm64-apple-macosx14.0 -framework AppK
     "$launcher_source/GameCatalog.swift" "$launcher_source/CatalogOrganization.swift" "$launcher_source/GameCatalogView.swift" "$launcher_source/NowPlayingGameView.swift" \
     "$launcher_source/CatalogCache.swift" "$launcher_source/CoverImageCache.swift" \
     "$launcher_source/GameLaunchCheck.swift" \
+    "$launcher_source/PersonalLibrary.swift" "$launcher_source/ConsoleExperience.swift" \
+    "$launcher_source/SessionLifecycle.swift" "$launcher_source/LauncherDialogs.swift" \
     "$launcher_source/StorageNoticeView.swift" \
     "$launcher_source/LibrarySettings.swift" "$launcher_source/LibrarySettingsView.swift" "$launcher_source/ResponsiveLayout.swift" \
     -o "$launcher_bundle/Contents/MacOS/PS12"

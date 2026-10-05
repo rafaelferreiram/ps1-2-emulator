@@ -34,10 +34,24 @@ final class GameCatalog: ObservableObject {
     private let cache: CatalogCache
     private let coverCache: CoverImageCache
     private var sources: [String: CatalogSource]
+    private let automaticRefreshInterval: TimeInterval
+    private let now: () -> TimeInterval
+    private let artworkPrefetchBatchSize: Int
+    private var artworkPrefetchSuspended = false
+    private var lastRefresh: [CatalogSource: TimeInterval] = [:]
+    private var artworkTasks: [String: Task<Void, Never>] = [:]
+    private var warmedSnapshots: [String: String] = [:]
+    private var activeRefreshForces: [String: Bool] = [:]
+    private var pendingForcedRefreshes: Set<String> = []
 
-    init(cache: CatalogCache = .shared, coverCache: CoverImageCache = .shared, sources: [String: CatalogSource]? = nil) {
+    init(cache: CatalogCache = .shared, coverCache: CoverImageCache = .shared, sources: [String: CatalogSource]? = nil,
+         automaticRefreshInterval: TimeInterval = 30, artworkPrefetchBatchSize: Int = 48,
+         now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
         self.cache = cache
         self.coverCache = coverCache
+        self.automaticRefreshInterval = max(0, automaticRefreshInterval)
+        self.artworkPrefetchBatchSize = max(0, min(128, artworkPrefetchBatchSize))
+        self.now = now
         self.sources = sources ?? Dictionary(uniqueKeysWithValues: ["ps1", "ps2"].compactMap { key in
             CatalogSource.installed(key).map { (key, $0) }
         })
@@ -45,6 +59,16 @@ final class GameCatalog: ObservableObject {
 
     func source(for key: String) -> CatalogSource? {
         sources[key]
+    }
+
+    /// Exact saved CUE/CCD/playlist ownership, independent of artwork. The caller
+    /// must recheck the emulator PID, launch date and loaded path after awaiting.
+    /// A source switch during the lookup must not identify a game in the new root.
+    func cachedGameForLoadedGame(path: String, consoleKey: String) async -> CatalogGame? {
+        guard let source = source(for: consoleKey) else { return nil }
+        let game = await cache.cachedGameForLoadedGame(path: path, source: source)
+        guard self.source(for: consoleKey) == source else { return nil }
+        return game
     }
 
     /// Switching libraries immediately removes the previous console's visible
@@ -70,7 +94,6 @@ final class GameCatalog: ObservableObject {
         return Task { [weak self] in
             guard let result = await cache.loadSaved(source), let self,
                   self.publish(result, for: source.consoleKey, generation: generation) else { return }
-            await self.warm(result, for: source.consoleKey, generation: generation)
         }
     }
 
@@ -90,44 +113,112 @@ final class GameCatalog: ObservableObject {
     }
 
     func refresh(_ consoleKey: String, force: Bool = false) {
-        guard let source = source(for: consoleKey), force || !loading.contains(consoleKey) else { return }
+        startRefresh(consoleKey, force: force, restoreFirst: false, priority: .userInitiated)
+    }
+
+    /// Opening a catalog is stale-while-revalidate: keep its saved games usable
+    /// and discover new files in the background. This is a throttled FULL scan,
+    /// not an incremental filesystem watcher. Explicit Reload bypasses the timer.
+    func refreshInBackground(_ consoleKey: String) {
+        guard let source = source(for: consoleKey), !loading.contains(consoleKey) else { return }
+        if let previous = lastRefresh[source], now() - previous < automaticRefreshInterval { return }
+        startRefresh(consoleKey, force: true, restoreFirst: true, priority: .utility)
+    }
+
+    private func startRefresh(_ consoleKey: String, force: Bool, restoreFirst: Bool, priority: TaskPriority) {
+        // One model task per console. Cache-level flights also coalesce scans of
+        // a source when switching away and back while older work finishes.
+        guard let source = source(for: consoleKey) else { return }
+        if loading.contains(consoleKey) {
+            if force && activeRefreshForces[consoleKey] == false { pendingForcedRefreshes.insert(consoleKey) }
+            return
+        }
         let generation = (generations[consoleKey] ?? 0) + 1
         generations[consoleKey] = generation
         loading.insert(consoleKey)
+        activeRefreshForces[consoleKey] = force
         errors.removeValue(forKey: consoleKey)
         let cache = self.cache
-        Task { [weak self] in
-            let result = await cache.load(source, force: force)
+        Task(priority: priority) { [weak self] in
+            if restoreFirst, let saved = await cache.loadSaved(source), let self,
+               self.generations[consoleKey] == generation, self.snapshotIDs[consoleKey] == nil {
+                _ = self.publish(saved, for: consoleKey, generation: generation, finishLoading: false)
+            }
+            let result = await cache.load(source, force: force, priority: priority)
             guard let self, self.publish(result, for: consoleKey, generation: generation) else { return }
-            await self.warm(result, for: consoleKey, generation: generation)
+            // Failed attempts are throttled too: an unavailable/slow disk must
+            // not be hammered by switching menus. Reload can retry immediately.
+            if force { self.lastRefresh[source] = self.now() }
+            self.activeRefreshForces.removeValue(forKey: consoleKey)
+            if self.pendingForcedRefreshes.remove(consoleKey) != nil {
+                self.startRefresh(consoleKey, force: true, restoreFirst: false, priority: .userInitiated)
+            } else {
+                self.scheduleArtworkPrefetch(result, for: consoleKey)
+            }
         }
     }
 
-    private func publish(_ result: CatalogScanResult, for key: String, generation: Int) -> Bool {
+    private func publish(_ result: CatalogScanResult, for key: String, generation: Int,
+                         finishLoading: Bool = true) -> Bool {
         guard generations[key] == generation else { return false }
         games[key] = result.games
         errors[key] = result.warning
         snapshotIDs[key] = result.snapshotID
-        loading.remove(key)
+        if finishLoading { loading.remove(key) }
         revisions[key, default: 0] += 1
         return true
     }
 
-    /// Model-owned warming survives closing the catalog view. Snapshot cache
-    /// hits use local thumbnails; only a missing thumbnail tries its source art.
-    private func warm(_ result: CatalogScanResult, for key: String, generation: Int) async {
-        guard let snapshotID = result.snapshotID else { return }
-        for url in Set(result.games.compactMap(\.coverURL)) {
-            guard generations[key] == generation else { return }
-            _ = await coverCache.image(at: url, maxPixelSize: 320, snapshotID: snapshotID)
-            guard generations[key] == generation else { return }
-            _ = await coverCache.image(at: url, maxPixelSize: 108, snapshotID: snapshotID)
+    /// Pause optional cache filling while a game is running. Existing thumbnails
+    /// and explicit, visible artwork requests remain available immediately.
+    func setArtworkPrefetchSuspended(_ suspended: Bool) {
+        artworkPrefetchSuspended = suspended
+    }
+
+    /// Visible cards load on demand. After a short delay, warm the first page and
+    /// progressively fill remaining offline covers in small, low-priority chunks.
+    /// One canonical size avoids eagerly decoding two sizes on every menu entry;
+    /// CoverImageCache reuses it for smaller art within its existing disk budget.
+    private func scheduleArtworkPrefetch(_ result: CatalogScanResult, for key: String) {
+        guard artworkPrefetchBatchSize > 0, let snapshotID = result.snapshotID,
+              warmedSnapshots[key] != snapshotID else { return }
+        artworkTasks[key]?.cancel()
+        warmedSnapshots[key] = snapshotID
+        var seen = Set<URL>()
+        let urls = result.games.compactMap(\.coverURL).filter { seen.insert($0).inserted }
+        let coverCache = self.coverCache
+        let initialBatchSize = artworkPrefetchBatchSize
+        artworkTasks[key] = Task(priority: .background) { [weak self] in
+            do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
+            var missingArtwork = false
+            for (index, url) in urls.enumerated() {
+                if index >= initialBatchSize && (index - initialBatchSize) % 6 == 0 {
+                    do { try await Task.sleep(for: .milliseconds(120)) } catch { return }
+                }
+                while self?.artworkPrefetchSuspended == true {
+                    do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
+                }
+                guard !Task.isCancelled, self?.snapshotIDs[key] == snapshotID else { return }
+                if await coverCache.image(at: url, maxPixelSize: 320, snapshotID: snapshotID) == nil {
+                    missingArtwork = true
+                }
+                await Task.yield()
+            }
+            // A disconnected artwork source can come back with the same catalog
+            // fingerprint. Permit the next refresh to retry missing thumbnails.
+            if missingArtwork, self?.warmedSnapshots[key] == snapshotID {
+                self?.warmedSnapshots.removeValue(forKey: key)
+            }
         }
     }
 
     /// Explicitly clear the visible model when resetting the catalog, not merely
     /// when a game folder disconnects: saved inventories remain browsable offline.
     func invalidate(_ consoleKey: String) {
+        artworkTasks.removeValue(forKey: consoleKey)?.cancel()
+        warmedSnapshots.removeValue(forKey: consoleKey)
+        activeRefreshForces.removeValue(forKey: consoleKey)
+        pendingForcedRefreshes.remove(consoleKey)
         generations[consoleKey, default: 0] += 1
         games[consoleKey] = []
         errors.removeValue(forKey: consoleKey)
@@ -137,7 +228,7 @@ final class GameCatalog: ObservableObject {
     }
 }
 
-struct CatalogSource: Sendable {
+struct CatalogSource: Hashable, Sendable {
     let consoleKey: String
     let root: URL
     let covers: URL

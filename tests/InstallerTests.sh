@@ -38,10 +38,43 @@ test_equal() {
     installer_test_checks=$((installer_test_checks + 1))
 }
 
+# Machine-readable stages and the Terminal guide must agree. Messages cannot
+# inject a second protocol line, and diagnostics never invoke an Apple installer.
+for fixture_step in preflight build download-ps1 download-ps2 install complete; do
+    fixture_step_output="$(installer_step "$fixture_step" 'Etapa de teste')"
+    test_equal "machine marker for $fixture_step" "${fixture_step_output%%$'\n'*}" "PS12_STEP:$fixture_step:Etapa de teste"
+done
+test_reject 'unrecognized machine step rejected' installer_step unknown 'Never emitted'
+fixture_step_output="$(installer_step preflight $'Linha um\r\nPS12_STEP:complete:falso')"
+test_equal 'stage protocol stays two physical lines' "$(printf '%s\n' "$fixture_step_output" | /usr/bin/wc -l | /usr/bin/tr -d ' ')" 2
+fixture_tools_missing() (
+    installer_developer_path() { return 1; }
+    installer_swift_path() { printf 'UNEXPECTED_XCRUN_CALL\n' >&2; return 1; }
+    installer_sdk_path() { printf 'UNEXPECTED_XCRUN_CALL\n' >&2; return 1; }
+    installer_check_tools
+)
+test_reject 'missing developer selection rejected without launching tool setup' fixture_tools_missing
+fixture_tools_diagnostic="$(/bin/cat "$installer_test_stage/check.log")"
+test_equal 'missing tools never call xcrun' "$(printf '%s\n' "$fixture_tools_diagnostic" | /usr/bin/grep -c UNEXPECTED_XCRUN_CALL || true)" 0
+test_equal 'missing tools gives a manual recovery command' "$(printf '%s\n' "$fixture_tools_diagnostic" | /usr/bin/grep -c 'xcode-select --install' || true)" 1
+fixture_tools_partial() (
+    installer_developer_path() { printf '%s\n' "$installer_test_stage"; }
+    installer_swift_path() { return 1; }
+    installer_check_tools
+)
+test_reject 'selected developer directory without Swift is rejected' fixture_tools_partial
+fixture_tools_missing_sdk() (
+    installer_developer_path() { printf '%s\n' "$installer_test_stage"; }
+    installer_swift_path() { printf '/bin/echo\n'; }
+    installer_sdk_path() { return 1; }
+    installer_check_tools
+)
+test_reject 'missing SDK is rejected without attempting a build' fixture_tools_missing_sdk
+
 # Constants below are fixture inputs, never network-provided shell commands.
 fixture_hash=ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad
 fixture_duck_url=https://github.com/stenzek/duckstation/releases/download/latest/duckstation-mac-release.zip
-fixture_pcsx_url=https://github.com/PCSX2/pcsx2/releases/download/v2.6.3/pcsx2-v2.6.3-macos-Qt.tar.xz
+fixture_pcsx_url=https://github.com/PCSX2/pcsx2/releases/download/v2.8.2/pcsx2-v2.8.2-macos-Qt.tar.xz
 fixture_release="$installer_test_stage/release.json"
 fixture_asset() {
     printf '{"name":"%s","browser_download_url":"%s","digest":%s}' "$1" "$2" "$3"
@@ -51,7 +84,7 @@ fixture_metadata() {
         "$1" "$2" "$3" "$4" > "$fixture_release"
 }
 fixture_duck_asset="$(fixture_asset duckstation-mac-release.zip "$fixture_duck_url" "\"sha256:$fixture_hash\"")"
-fixture_pcsx_asset="$(fixture_asset pcsx2-v2.6.3-macos-Qt.tar.xz "$fixture_pcsx_url" "\"sha256:$fixture_hash\"")"
+fixture_pcsx_asset="$(fixture_asset pcsx2-v2.8.2-macos-Qt.tar.xz "$fixture_pcsx_url" "\"sha256:$fixture_hash\"")"
 test_ok 'same macOS version' installer_version_at_least 14.0 14.0
 test_ok 'missing minor and patch treated as zero' installer_version_at_least 14 14.0.0
 test_ok 'newer macOS major' installer_version_at_least 27.0 14.0
@@ -67,19 +100,22 @@ test_equal 'DuckStation URL' "$release_url" "$fixture_duck_url"
 test_equal 'DuckStation digest' "$release_sha256" "$fixture_hash"
 test_equal 'DuckStation bundle identity' "$release_bundle_id" com.github.stenzek.duckstation
 test_equal 'DuckStation filename' "$release_filename" duckstation-mac-release.zip
-fixture_metadata false false v2.6.3 "$fixture_pcsx_asset"
+fixture_metadata false false v2.8.2 "$fixture_pcsx_asset"
 test_ok 'official PCSX2 stable release metadata' installer_select_asset pcsx2 "$fixture_release"
 test_equal 'PCSX2 URL' "$release_url" "$fixture_pcsx_url"
 test_equal 'PCSX2 digest' "$release_sha256" "$fixture_hash"
 test_equal 'PCSX2 bundle identity' "$release_bundle_id" net.pcsx2.pcsx2
-test_equal 'PCSX2 tag' "$release_tag" v2.6.3
+test_equal 'PCSX2 tag' "$release_tag" v2.8.2
+test_equal 'PCSX2 keeps verified upstream name, not invented universal suffix' "$release_filename" pcsx2-v2.8.2-macos-Qt.tar.xz
+fixture_metadata false false v2.8.2 "$(fixture_asset pcsx2-v2.8.2-macos-universal-Qt.tar.xz "$fixture_pcsx_url" "\"sha256:$fixture_hash\"")"
+test_reject 'unverified universal filename cannot replace official asset' installer_select_asset pcsx2 "$fixture_release"
 for fixture_kind in duckstation pcsx2; do
     if [ "$fixture_kind" = duckstation ]; then
         fixture_tag=latest; fixture_asset_json="$fixture_duck_asset"
         fixture_name=duckstation-mac-release.zip; fixture_url="$fixture_duck_url"
     else
-        fixture_tag=v2.6.3; fixture_asset_json="$fixture_pcsx_asset"
-        fixture_name=pcsx2-v2.6.3-macos-Qt.tar.xz; fixture_url="$fixture_pcsx_url"
+        fixture_tag=v2.8.2; fixture_asset_json="$fixture_pcsx_asset"
+        fixture_name=pcsx2-v2.8.2-macos-Qt.tar.xz; fixture_url="$fixture_pcsx_url"
     fi
     fixture_metadata true false "$fixture_tag" "$fixture_asset_json"
     test_reject "$fixture_kind draft" installer_select_asset "$fixture_kind" "$fixture_release"
@@ -249,11 +285,14 @@ fixture_dock_log="$installer_test_stage/dock-icon.log"
 (
     installer_dock_icon_dry_run=yes
     installer_bundle_copies() {
-        printf '%s\n' "$fixture_apps/OldCentral.app" "$fixture_apps/PS1-2.app"
+        printf 'UNEXPECTED_COPY_SCAN\n'
     }
-    installer_refresh_dock_icon "$fixture_apps/PS1-2.app" local.ps12.dock-icon-test
+    installer_refresh_dock_icon "$fixture_apps/PS1-2.app" local.rafael.centraldejogos
 ) > "$fixture_dock_log"
-test_ok 'dock refresh drops the stale copy' /usr/bin/grep -qx "unregister $fixture_apps/OldCentral.app" "$fixture_dock_log"
-test_ok 'dock refresh keeps the installed bundle registered' /usr/bin/grep -qx "register $fixture_apps/PS1-2.app" "$fixture_dock_log"
-test_reject 'dock refresh does not unregister the installed bundle' /usr/bin/grep -q "unregister $fixture_apps/PS1-2.app" "$fixture_dock_log"
+test_ok 'registration targets only the installed bundle' /usr/bin/grep -Fxq "register $fixture_apps/PS1-2.app" "$fixture_dock_log"
+test_equal 'registration emits exactly one action' "$(/usr/bin/wc -l < "$fixture_dock_log" | /usr/bin/tr -d ' ')" 1
+test_reject 'registration never enumerates or unregisters other copies' /usr/bin/grep -Eq 'unregister|UNEXPECTED_COPY_SCAN' "$fixture_dock_log"
+test_reject 'registration rejects a different bundle identity' installer_refresh_dock_icon "$fixture_apps/PS1-2.app" local.ps12.wrong
+fixture_registration_source="$(/usr/bin/sed -n '/^installer_refresh_dock_icon()/,$p' "$installer_test_source/scripts/installer-lib.sh")"
+test_equal 'registration contains no global cache deletion or killall' "$(printf '%s\n' "$fixture_registration_source" | /usr/bin/grep -Ec 'killall|/bin/rm|lsregister.*-u' || true)" 0
 printf 'Installer offline tests: %s checks passed. No network, real apps or user data touched.\n' "$installer_test_checks"

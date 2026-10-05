@@ -3,7 +3,7 @@ import SwiftUI
 import Combine
 
 enum CatalogCommand: String, CaseIterable, Identifiable {
-    case sortAZ, sortZA, folders, minimize, reload, library
+    case sortAZ, sortZA, folders, minimize, reload, library, filter, favorite, density, session, experience, clearSearch
     var id: String { rawValue }
 }
 
@@ -47,6 +47,13 @@ enum Theme {
 
 @MainActor
 final class LauncherModel: ObservableObject {
+    @Published var showingExperienceSettings = false
+    @Published var showingSessionMenu = false
+    @Published var sessionMenuIndex = 0
+    @Published var dialog: LauncherDialog?
+    @Published var dialogAcceptSelected = false
+    @Published var selectedCatalogFolderID: String?
+    @Published private(set) var resolvedSessionGameIDs: [String: String] = [:]
     @Published private(set) var storageAvailability: [String: Bool] = [:]
     @Published var showingLibrarySettings = false
     @Published var choosingLibraryFolder = false
@@ -82,28 +89,47 @@ final class LauncherModel: ObservableObject {
     let catalog: GameCatalog
     let librarySettings: GameLibrarySettings
     let organizer: CatalogOrganizer
-    let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    let personalLibrary: PersonalLibrary
+    let experience: ExperiencePreferences
+    let sounds = ConsoleSoundPlayer()
+    var reduceMotion: Bool { experience.reduceMotion(system: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion) }
+    var hasOverlay: Bool { showingExperienceSettings || showingSessionMenu || dialog != nil || errorMessage != nil || storageNotice != nil || showingLibrarySettings || showingCatalogFolders }
+    var activeConsole: Console { catalogConsole ?? selected }
     var toggleFullscreen: (() -> Void)?
+    var returnToLauncher: (() -> Void)?
     var chooseLibraryFolder: ((Console) -> Void)?
     private var timer: Timer?
     private var libraryObserver: AnyCancellable?
     private var organizerObserver: AnyCancellable?
+    private var personalObserver: AnyCancellable?
+    private var experienceObserver: AnyCancellable?
+    private var workspaceObservers: [NSObjectProtocol] = []
+    private var ownedSessions: [String: OwnedGameSession] = [:]
+    private var pendingHistory: Set<String> = []
+    private var lastFrontmostPID: Int32?
+    private var lastFrontmostApplication: NSRunningApplication?
+    private var sessionResolutionTokens: [String: String] = [:]
+    private var serviceTick = 0
     private var lastCatalogCommand: CatalogCommand = .sortAZ
     private let storageProbe: (() -> Bool)?
     private let monitor: EmulatorMonitor
     private var launchURL: URL?
     private var launchGameURL: URL?
-    private var restartDuckStation: (pid: Int32, launchedAt: Date?)?
+    private var launchGameID: String?
+    private var restartEmulator: (pid: Int32, launchedAt: Date?)?
     private var stopDeadlines: [Console: Date] = [:]
     let startedAt = Date()
 
     init(catalog: GameCatalog? = nil, librarySettings: GameLibrarySettings? = nil,
          organizer: CatalogOrganizer? = nil,
+         personalLibrary: PersonalLibrary? = nil, experience: ExperiencePreferences? = nil,
          storageProbe: (() -> Bool)? = nil, startServices: Bool = true) {
         let settings = librarySettings ?? GameLibrarySettings()
         self.librarySettings = settings
         let storedOrganizer = organizer ?? CatalogOrganizer()
         self.organizer = storedOrganizer
+        self.personalLibrary = personalLibrary ?? PersonalLibrary(defaults: startServices ? .standard : UserDefaults(suiteName: "PS12.Test.Personal.\(UUID().uuidString)")!)
+        self.experience = experience ?? ExperiencePreferences(defaults: startServices ? .standard : UserDefaults(suiteName: "PS12.Test.Experience.\(UUID().uuidString)")!)
         let sources = Dictionary(uniqueKeysWithValues: Console.allCases.compactMap { console -> (String, CatalogSource)? in
             guard let source = CatalogSource.installed(console.rawValue, root: settings.folder(for: console.rawValue)) else { return nil }
             return (console.rawValue, source)
@@ -113,35 +139,150 @@ final class LauncherModel: ObservableObject {
         self.storageProbe = storageProbe
         libraryObserver = settings.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }
         organizerObserver = storedOrganizer.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        personalObserver = self.personalLibrary.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        experienceObserver = self.experience.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        for console in Console.allCases {
+            gameSelection[console.rawValue] = self.personalLibrary.state(console: console.rawValue, root: settings.folder(for: console.rawValue)).selectedGameID
+        }
         refreshStorage()
         guard startServices else { return }
         self.catalog.restoreSavedCatalogs()
         refreshSessions()
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                self?.refreshStorage()
-                self?.refreshSessions()
+                guard let self else { return }
+                self.serviceTick += 1
+                // Poll loaded-disc descriptors less often while another app is
+                // foreground. Workspace notifications handle process exit promptly.
+                if self.isForeground || self.serviceTick % 5 == 0 {
+                    self.refreshStorage()
+                    self.refreshSessions()
+                }
             }
         }
+        timer?.tolerance = 0.15
+        let center = NSWorkspace.shared.notificationCenter
+        lastFrontmostPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        lastFrontmostApplication = NSWorkspace.shared.frontmostApplication
+        workspaceObservers.append(center.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] note in
+            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                // On some macOS versions activation of the previous window is
+                // delivered before didTerminate. Observe the old app's actual
+                // termination, not a timeout that might steal focus after Cmd-Tab.
+                if let previous = self.lastFrontmostApplication, previous.isTerminated {
+                    self.sessionTerminated(previous)
+                }
+                self.lastFrontmostPID = app.processIdentifier
+                self.lastFrontmostApplication = app
+            }
+        })
+        workspaceObservers.append(center.addObserver(forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main) { [weak self] note in
+            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
+            MainActor.assumeIsolated { self?.sessionTerminated(app) }
+        })
         DispatchQueue.main.asyncAfter(deadline: .now() + (reduceMotion ? 0 : 1.7)) { [weak self] in self?.finishBoot() }
     }
     func refreshSessions() {
         monitor.refresh()
-        sessions = monitor.states
-        now = Date()
+        if sessions != monitor.states { sessions = monitor.states }
+        catalog.setArtworkPrefetchSuspended(!isForeground && sessions.values.contains(where: \.isRunning))
+        if sessions.values.contains(where: \.isRunning) || !stopping.isEmpty { now = Date() }
+        resolveLoadedGames()
+        recordObservedLaunches()
         for console in Array(stopping) {
             if !state(console).isRunning {
                 stopping.remove(console)
                 stopDeadlines.removeValue(forKey: console)
-                notice = "\(console.badge) off."
+                notice = "\(console.badge) desligado."
             } else if let deadline = stopDeadlines[console], now >= deadline {
                 stopping.remove(console)
                 stopDeadlines.removeValue(forKey: console)
-                notice = "\(console.emulator) is still open. Confirm or cancel quitting in the emulator."
+                notice = "\(console.emulator) continua aberto. Confirme ou cancele a saída na janela dele."
+            }
+        }
+    }
+    private func resolveLoadedGames() {
+        for console in Console.allCases {
+            let key = console.rawValue
+            let current = state(console)
+            guard current.isRunning, let path = current.gamePath else {
+                if resolvedSessionGameIDs[key] != nil { resolvedSessionGameIDs.removeValue(forKey: key) }
+                sessionResolutionTokens.removeValue(forKey: key)
+                continue
+            }
+            let token = "\(current.pid ?? 0)|\(current.launchedAt?.timeIntervalSince1970 ?? 0)|\(path)|\(gameFolder(for: console).path)|\(catalog.snapshotIDs[key] ?? "")"
+            guard sessionResolutionTokens[key] != token else { continue }
+            sessionResolutionTokens[key] = token
+            resolvedSessionGameIDs.removeValue(forKey: key)
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let owner = await self.catalog.cachedGameForLoadedGame(path: path, consoleKey: key)
+                guard self.sessionResolutionTokens[key] == token else { return }
+                self.resolvedSessionGameIDs[key] = owner?.id
+                self.recordObservedLaunches()
+            }
+        }
+    }
+    private func recordObservedLaunches() {
+        for key in Array(pendingHistory) {
+            guard let owned = ownedSessions[key], let console = Console(rawValue: key) else { continue }
+            let current = state(console)
+            let game = CatalogGame(id: owned.gameID, consoleKey: key, title: "", fileURL: owned.gameURL, coverURL: nil)
+            if current.pid == owned.pid, current.launchedAt == owned.launchedAt, sameLoadedGame(game, path: current.gamePath) {
+                personalLibrary.recordLaunch(owned.gameID, console: key, root: owned.libraryRoot)
+                pendingHistory.remove(key)
             }
         }
     }
     func state(_ console: Console) -> EmulatorState { sessions[console.rawValue] ?? .off }
+    func playSound(_ cue: ConsoleSoundPlayer.Cue) {
+        guard isForeground else { return }
+        sounds.play(cue, console: activeConsole, preferences: experience)
+    }
+    func showExperienceSettings() {
+        guard launching == nil, !hasOverlay, NSApp.modalWindow == nil else { return }
+        finishBoot()
+        experience.focusedSetting = .startup
+        showingExperienceSettings = true
+    }
+    var sessionActions: [SessionMenuAction] {
+        (state(activeConsole).isRunning ? [.resume, .stop] : [.openEmulator]) + [.appearance, .libraries, .close]
+    }
+    func showSessionMenu() {
+        guard launching == nil, !hasOverlay, NSApp.modalWindow == nil else { return }
+        finishBoot()
+        sessionMenuIndex = 0
+        showingSessionMenu = true
+    }
+    private func moveSessionMenu(_ direction: Int) {
+        let count = sessionActions.count
+        sessionMenuIndex = (sessionMenuIndex + direction + count) % count
+        playSound(.navigate)
+    }
+    func activateSessionAction() {
+        let actions = sessionActions
+        guard actions.indices.contains(sessionMenuIndex) else { sessionMenuIndex = 0; return }
+        let action = actions[sessionMenuIndex]
+        showingSessionMenu = false
+        switch action {
+        case .resume: returnToGame(activeConsole)
+        case .stop: requestStop(activeConsole)
+        case .openEmulator: launch(activeConsole)
+        case .appearance: showExperienceSettings()
+        case .libraries: showLibrarySettings()
+        case .close: break
+        }
+    }
+    func openConsoleCatalog(_ console: Console) {
+        guard !hasOverlay, launching == nil else { return }
+        rememberCatalogSelection()
+        select(console)
+        guard selected == console else { return }
+        catalogConsole = nil
+        showCatalog()
+    }
     func uptime(_ console: Console) -> String {
         guard let date = state(console).launchedAt else { return "--:--:--" }
         let seconds = max(0, Int(now.timeIntervalSince(date)))
@@ -162,6 +303,7 @@ final class LauncherModel: ObservableObject {
     func isStorageAvailable(for console: Console) -> Bool { storageAvailability[console.rawValue] ?? false }
     func gameFolder(for console: Console) -> URL { librarySettings.folder(for: console.rawValue) }
     func showLibrarySettings() {
+        guard !showingExperienceSettings, !showingSessionMenu, dialog == nil else { return }
         guard launching == nil, storageNotice == nil, errorMessage == nil, NSApp.modalWindow == nil,
               !choosingLibraryFolder else { return }
         dismissCatalogFolders()
@@ -191,13 +333,17 @@ final class LauncherModel: ObservableObject {
     private func applyLibraryChange(for console: Console, fullLoad: Bool) {
         librarySettingsError = nil
         gameSelection.removeValue(forKey: console.rawValue)
+        selectedCatalogFolderID = nil
         let folder = gameFolder(for: console)
+        let saved = personalLibrary.state(console: console.rawValue, root: folder)
+        gameSelection[console.rawValue] = saved.selectedGameID
+        if catalogConsole == console { selectedCatalogFolderID = saved.selectedSectionID }
         monitor.setLibrary(folder.path, for: console.rawValue)
         if let source = CatalogSource.installed(console.rawValue, root: folder) {
             catalog.setSource(source, restoreSaved: !fullLoad)
             if fullLoad { catalog.refresh(console.rawValue, force: true) }
         }
-        notice = "\(console.badge) folder updated."
+        notice = "Pasta do \(console.badge) atualizada."
         refreshStorage()
         refreshSessions()
     }
@@ -206,21 +352,28 @@ final class LauncherModel: ObservableObject {
         withAnimation(.easeOut(duration: reduceMotion ? 0 : 0.65)) { booting = false }
     }
     func select(_ console: Console) {
+        guard !hasOverlay else { return }
         guard launching == nil, !booting, errorMessage == nil, storageNotice == nil,
               !showingLibrarySettings, !showingCatalogFolders else { return }
+        if selected != console { playSound(.navigate) }
         withAnimation(.easeOut(duration: reduceMotion ? 0 : 0.2)) { selected = console }
     }
     var previewConsole: Console? {
+        guard !hasOverlay else { return nil }
         guard !booting, isForeground, launching == nil, catalogConsole == nil, errorMessage == nil,
               storageNotice == nil, !showingLibrarySettings else { return nil }
         return selected
     }
     func setConsoleHover(_ console: Console, inside: Bool) {
+        guard !hasOverlay else { return }
         guard inside, !booting, isForeground, launching == nil,
               catalogConsole == nil, errorMessage == nil, storageNotice == nil, !showingLibrarySettings else { return }
         select(console)
     }
     func move(_ direction: Int) {
+        if dialog != nil { dialogAcceptSelected.toggle(); return }
+        if showingExperienceSettings { experience.adjust(direction); return }
+        if showingSessionMenu { moveSessionMenu(direction); return }
         guard errorMessage == nil, storageNotice == nil, NSApp.modalWindow == nil else { return }
         if showingCatalogFolders { moveFolderActions(direction); return }
         if showingLibrarySettings {
@@ -233,6 +386,11 @@ final class LauncherModel: ObservableObject {
         select(selected == .ps1 ? .ps2 : .ps1)
     }
     func moveVertical(_ direction: Int) {
+        if dialog != nil { dialogAcceptSelected.toggle(); return }
+        if showingExperienceSettings { experience.moveFocus(direction); return }
+        if showingSessionMenu { moveSessionMenu(direction); return }
+        guard errorMessage == nil, storageNotice == nil, NSApp.modalWindow == nil, launching == nil else { return }
+        if booting { finishBoot(); return }
         if showingCatalogFolders { moveFolderList(direction); return }
         if showingLibrarySettings { move(direction); return }
         if catalogConsole != nil { moveInsideCatalog(horizontal: 0, vertical: direction) } else { move(direction) }
@@ -246,11 +404,54 @@ final class LauncherModel: ObservableObject {
         let folders = layout.folders.map { "\($0.id.uuidString)#\($0.name)#\($0.gameIDs.joined(separator: ","))" }.joined(separator: "|")
         let collapsed = layout.collapsed.sorted().joined(separator: ",")
         let count = catalog.games[key]?.count ?? 0
-        return "\(layout.ascending)#\(folders)#\(collapsed)#\(count)"
+        let personal = libraryState(for: catalogConsole ?? selected)
+        return "\(layout.ascending)#\(folders)#\(collapsed)#\(count)#\(personal.filter)#\(personal.query)#\(personal.favoriteIDs.sorted())#\(personal.lastLaunched)#\(personal.density)"
+    }
+    func libraryState(for console: Console) -> PersonalLibraryState {
+        personalLibrary.state(console: console.rawValue, root: gameFolder(for: console))
+    }
+    func filteredCatalogGames(for console: Console) -> [CatalogGame] {
+        let all = catalog.games[console.rawValue] ?? []
+        let entries = all.map { CatalogEntry(id: $0.id, title: $0.title) }
+        return resolved(personalLibrary.filteredEntries(entries, console: console.rawValue, root: gameFolder(for: console)), console: console)
+    }
+    func setCatalogFilter(_ filter: LibraryFilter) {
+        guard let console = catalogConsole else { return }
+        personalLibrary.setFilter(filter, console: console.rawValue, root: gameFolder(for: console))
+        selectedCatalogFolderID = nil
+        alignCatalogSelection()
+    }
+    func setCatalogQuery(_ query: String) {
+        guard let console = catalogConsole else { return }
+        personalLibrary.setQuery(query, console: console.rawValue, root: gameFolder(for: console))
+        selectedCatalogFolderID = nil
+        alignCatalogSelection()
+    }
+    func toggleSelectedFavorite() {
+        guard let console = catalogConsole, let game = selectedGame else { return }
+        personalLibrary.toggleFavorite(game.id, console: console.rawValue, root: gameFolder(for: console))
+        playSound(.confirm)
+        alignCatalogSelection()
+    }
+    func toggleCatalogDensity() {
+        guard let console = catalogConsole else { return }
+        personalLibrary.setDensity(libraryState(for: console).density == .comfortable ? .compact : .comfortable,
+                                   console: console.rawValue, root: gameFolder(for: console))
     }
     func catalogSections(for console: Console) -> [CatalogSection] {
-        let stored = catalog.games[console.rawValue] ?? []
+        let stored = filteredCatalogGames(for: console)
         let entries = stored.map { CatalogEntry(id: $0.id, title: $0.title) }
+        let personal = libraryState(for: console)
+        if personal.filter == .recent {
+            return [CatalogSection(id: "recent", title: "Recentes", games: entries, collapsible: false, collapsed: false)]
+        }
+        // Search/favorites must not hide matches inside a collapsed folder.
+        if personal.filter == .favorites || !personal.query.isEmpty {
+            return [CatalogSection(id: "results", title: "Resultados", games: entries.sorted {
+                let order = $0.title.localizedStandardCompare($1.title)
+                return catalogSortAscending ? order == .orderedAscending : order == .orderedDescending
+            }, collapsible: false, collapsed: false)]
+        }
         return CatalogGrouping.sections(entries: entries, layout: organizer.layout(for: console.rawValue))
     }
     func catalogFolders(for console: Console) -> [CatalogFolder] {
@@ -261,6 +462,7 @@ final class LauncherModel: ObservableObject {
         return resolved(CatalogGrouping.visible(catalogSections(for: console)), console: console)
     }
     var selectedGame: CatalogGame? {
+        guard selectedCatalogFolderID == nil else { return nil }
         guard let console = catalogConsole else { return nil }
         let visible = listedGames
         if let id = gameSelection[console.rawValue], let game = visible.first(where: { $0.id == id }) { return game }
@@ -268,16 +470,35 @@ final class LauncherModel: ObservableObject {
     }
     func alignCatalogSelection() {
         guard let console = catalogConsole else { return }
+        if let command = catalogCommand, !availableCatalogCommands.contains(command) { catalogCommand = .filter }
+        if let header = selectedCatalogFolderID,
+           catalogSections(for: console).contains(where: { $0.id == header && $0.collapsible }) { return }
+        selectedCatalogFolderID = nil
         let visible = listedGames
         guard !visible.isEmpty else { return }
         if let id = gameSelection[console.rawValue], visible.contains(where: { $0.id == id }) { return }
         gameSelection[console.rawValue] = visible[0].id
+        rememberCatalogSelection()
     }
     func selectGame(_ game: CatalogGame) {
         guard launching == nil, storageNotice == nil, !showingLibrarySettings, !showingCatalogFolders,
               game.consoleKey == catalogConsole?.rawValue else { return }
         catalogCommand = nil
+        selectedCatalogFolderID = nil
+        if gameSelection[game.consoleKey] != game.id { playSound(.navigate) }
         gameSelection[game.consoleKey] = game.id
+        rememberCatalogSelection()
+    }
+    func selectCatalogSection(_ id: String) {
+        guard let console = catalogConsole, catalogSections(for: console).contains(where: { $0.id == id && $0.collapsible }) else { return }
+        catalogCommand = nil
+        selectedCatalogFolderID = id
+        rememberCatalogSelection()
+    }
+    private func rememberCatalogSelection() {
+        guard let console = catalogConsole else { return }
+        personalLibrary.rememberSelection(gameID: gameSelection[console.rawValue], sectionID: selectedCatalogFolderID,
+                                          console: console.rawValue, root: gameFolder(for: console))
     }
     private func resolved(_ entries: [CatalogEntry], console: Console) -> [CatalogGame] {
         let stored = catalog.games[console.rawValue] ?? []
@@ -299,9 +520,10 @@ final class LauncherModel: ObservableObject {
     }
     var availableCatalogCommands: [CatalogCommand] {
         guard let console = catalogConsole else { return [] }
-        var commands: [CatalogCommand] = [.sortAZ, .sortZA, .folders]
+        var commands: [CatalogCommand] = [.filter, .favorite, .density, .sortAZ, .sortZA, .folders]
+        if !libraryState(for: console).query.isEmpty { commands.insert(.clearSearch, at: 0) }
         if catalogSections(for: console).contains(where: \.collapsible) { commands.append(.minimize) }
-        commands.append(contentsOf: [.reload, .library])
+        commands.append(contentsOf: [.reload, .library, .session, .experience])
         return commands
     }
     func focusCatalogCommands() {
@@ -320,23 +542,25 @@ final class LauncherModel: ObservableObject {
     }
     private func moveInsideCatalog(horizontal: Int, vertical: Int) {
         guard let console = catalogConsole else { return }
+        let board = ConsoleCatalogNavigation(sections: catalogSections(for: console), columns: catalogColumns)
         if catalogCommand != nil {
             if horizontal != 0 { shiftCatalogCommand(horizontal) }
-            else if vertical > 0, !listedGames.isEmpty { catalogCommand = nil }
+            else if vertical > 0, let first = board.first { catalogCommand = nil; focusCatalogItem(first) }
             return
         }
-        if listedGames.isEmpty {
+        let current = selectedCatalogFolderID.map { ConsoleCatalogNavigation.headerPrefix + $0 } ?? selectedGame?.id
+        guard let first = board.first else { focusCatalogCommands(); return }
+        let start = current.flatMap { board.contains($0) ? $0 : nil } ?? first
+        if let next = board.move(from: start, horizontal: horizontal, vertical: vertical) {
+            focusCatalogItem(next)
+        } else if vertical < 0 {
             focusCatalogCommands()
-            return
         }
-        if vertical < 0, let id = selectedGame?.id ?? listedGames.first?.id {
-            let board = CatalogBoard(sections: catalogSections(for: console))
-            if board.move(from: id, columns: max(1, catalogColumns), horizontal: 0, vertical: -1) == nil {
-                focusCatalogCommands()
-                return
-            }
-        }
-        moveGame(horizontal: horizontal, vertical: vertical)
+    }
+    private func focusCatalogItem(_ id: String) {
+        if id.hasPrefix(ConsoleCatalogNavigation.headerPrefix) {
+            selectCatalogSection(String(id.dropFirst(ConsoleCatalogNavigation.headerPrefix.count)))
+        } else if let game = listedGames.first(where: { $0.id == id }) { selectGame(game) }
     }
     func activateCatalogCommand() {
         guard let command = catalogCommand else { return }
@@ -347,6 +571,14 @@ final class LauncherModel: ObservableObject {
         case .minimize: toggleSectionOfSelection()
         case .reload: reloadCatalog()
         case .library: showLibrarySettings()
+        case .filter:
+            let current = libraryState(for: activeConsole).filter
+            setCatalogFilter(current == .all ? .favorites : current == .favorites ? .recent : .all)
+        case .favorite: toggleSelectedFavorite()
+        case .density: toggleCatalogDensity()
+        case .session: showSessionMenu()
+        case .experience: showExperienceSettings()
+        case .clearSearch: setCatalogQuery("")
         }
     }
     func availableFolderActions() -> [CatalogFolderAction] {
@@ -427,6 +659,7 @@ final class LauncherModel: ObservableObject {
         catalogFolderAction = actions[(index + direction + actions.count) % actions.count]
     }
     func setCatalogSort(ascending: Bool) {
+        guard !showingExperienceSettings, !showingSessionMenu, dialog == nil else { return }
         guard let console = catalogConsole, !showingLibrarySettings, launching == nil,
               errorMessage == nil, storageNotice == nil else { return }
         withAnimation(.easeOut(duration: reduceMotion ? 0 : 0.18)) {
@@ -441,6 +674,7 @@ final class LauncherModel: ObservableObject {
         alignCatalogSelection()
     }
     func toggleSectionOfSelection() {
+        if let id = selectedCatalogFolderID { toggleCatalogSection(id); return }
         guard let console = catalogConsole, let id = selectedGame?.id else { return }
         guard let section = catalogSections(for: console).first(where: { section in
             section.collapsible && section.games.contains { $0.id == id }
@@ -448,6 +682,7 @@ final class LauncherModel: ObservableObject {
         toggleCatalogSection(section.id)
     }
     func showCatalogFolders() {
+        guard !showingExperienceSettings, !showingSessionMenu, dialog == nil else { return }
         guard catalogConsole != nil, launching == nil, !booting, !showingLibrarySettings,
               errorMessage == nil, storageNotice == nil, NSApp.modalWindow == nil else { return }
         folderDraft = ""
@@ -458,6 +693,7 @@ final class LauncherModel: ObservableObject {
         showingCatalogFolders = true
     }
     func toggleCatalogFolders() {
+        if catalogConsole == nil { showSessionMenu(); return }
         if showingCatalogFolders { dismissCatalogFolders() }
         else { showCatalogFolders() }
     }
@@ -546,30 +782,49 @@ final class LauncherModel: ObservableObject {
         placeSelectedGame(in: folders[catalogFolderIndex].id)
     }
     func showCatalog() {
+        guard !showingExperienceSettings, !showingSessionMenu, dialog == nil else { return }
         guard launching == nil, errorMessage == nil, storageNotice == nil, NSApp.modalWindow == nil,
               !showingLibrarySettings, !showingCatalogFolders else { return }
+        if catalogConsole != nil { reloadCatalog(); return }
         finishBoot()
         let console = catalogConsole ?? selected
-        // A connected library is reread on open, so games copied in since the
-        // last visit show up. Offline keeps the saved list.
-        let forceRefresh = catalogConsole != nil || isStorageAvailable(for: console)
+        let entering = catalogConsole == nil
         catalogConsole = console
-        catalog.refresh(console.rawValue, force: forceRefresh)
-        if forceRefresh { notice = "Reloading games and covers for \(console.badge)…" }
+        if entering {
+            catalogCommand = nil
+            selectedCatalogFolderID = libraryState(for: console).selectedSectionID
+            playSound(.confirm)
+        }
+        if isStorageAvailable(for: console) { catalog.refreshInBackground(console.rawValue) }
+        else { catalog.refresh(console.rawValue, force: false) }
     }
     /// Full rescan of the visible console, including covers. From the menu it
     /// opens that console's catalog. A scan already in progress is left alone.
     func reloadCatalog() {
+        guard !showingExperienceSettings, !showingSessionMenu, dialog == nil else { return }
         guard launching == nil, !booting, errorMessage == nil, storageNotice == nil,
               NSApp.modalWindow == nil, !showingLibrarySettings, !showingCatalogFolders else { return }
         let console = catalogConsole ?? selected
         guard !catalog.loading.contains(console.rawValue) else { return }
         catalogConsole = console
         catalog.refresh(console.rawValue, force: true)
-        notice = "Reloading games and covers for \(console.badge)…"
+        // The catalog derives progress from `loading`; a persistent menu notice
+        // would outlive the scan and misleadingly claim it is still running.
+        notice = ""
     }
     func confirm() {
-        guard errorMessage == nil, NSApp.modalWindow == nil else { return }
+        guard NSApp.modalWindow == nil else { return }
+        if errorMessage != nil { errorMessage = nil; return }
+        if let prompt = dialog {
+            dialog = nil
+            if dialogAcceptSelected { prompt.accept() }
+            return
+        }
+        if showingExperienceSettings {
+            if experience.confirmSelection() { showingExperienceSettings = false }
+            return
+        }
+        if showingSessionMenu { activateSessionAction(); return }
         if storageNotice != nil { dismissStorageNotice(); return }
         if showingCatalogFolders {
             if renamingFolderID != nil { confirmCatalogFolder() }
@@ -582,14 +837,20 @@ final class LauncherModel: ObservableObject {
             return
         }
         if booting { finishBoot() }
-        else if let console = catalogConsole {
+        else if launching != nil { skipStartup() }
+        else if catalogConsole != nil {
             if catalogCommand != nil { activateCatalogCommand() }
-            else if !catalog.loading.contains(console.rawValue), let game = selectedGame { launchGame(game) }
+            else if let folder = selectedCatalogFolderID { toggleCatalogSection(folder) }
+            else if let game = selectedGame { launchGame(game) }
         }
-        else { launch(selected) }
+        else { showCatalog() }
     }
     func back() {
-        guard errorMessage == nil, NSApp.modalWindow == nil else { return }
+        guard NSApp.modalWindow == nil else { return }
+        if errorMessage != nil { errorMessage = nil; return }
+        if dialog != nil { dialog = nil; return }
+        if showingExperienceSettings { showingExperienceSettings = false; return }
+        if showingSessionMenu { showingSessionMenu = false; return }
         if storageNotice != nil { dismissStorageNotice(); return }
         if showingCatalogFolders {
             if catalogFolderAction != nil { catalogFolderAction = nil; return }
@@ -601,16 +862,20 @@ final class LauncherModel: ObservableObject {
         else if launching != nil { cancelLaunch() }
         else if catalogConsole != nil {
             if catalogCommand != nil { catalogCommand = nil; return }
+            rememberCatalogSelection()
             catalogConsole = nil
+            selectedCatalogFolderID = nil
+            playSound(.back)
         }
         else if fullscreen { toggleFullscreen?() }
     }
     func launch(_ console: Console) {
+        guard !showingExperienceSettings, !showingSessionMenu, dialog == nil else { return }
         guard launching == nil, !booting, errorMessage == nil, storageNotice == nil,
               !showingLibrarySettings, !showingCatalogFolders, !stopping.contains(console) else { return }
         select(console)
         guard let url = console.applicationURL else {
-            errorMessage = "Could not find \(console.emulator). Put the app in the Applications folder and try again."
+            errorMessage = "Não encontramos \(console.emulator). Instale o emulador na pasta Aplicativos e tente novamente."
             return
         }
         launching = console
@@ -618,23 +883,37 @@ final class LauncherModel: ObservableObject {
         launchURL = url
         launchGameURL = nil
         launchGameTitle = nil
-        restartDuckStation = nil
+        restartEmulator = nil
         isOpening = false
-        notice = "Starting \(console.badge)…"
+        notice = "Iniciando \(console.badge)…"
+        playSound(.confirm)
+        if let id = launchID, experience.startupMode != .full {
+            let delay = UInt64((experience.startupMode.durationLimit ?? 0) * 1_000_000_000)
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: delay)
+                guard let self, self.launchID == id else { return }
+                self.animationFinished(id)
+            }
+        }
+    }
+    func skipStartup() {
+        guard let id = launchID, !isOpening else { return }
+        animationFinished(id)
     }
     func cancelLaunch() {
         guard launching != nil, !isOpening || waitingForRestart else { return }
         let exitRequested = waitingForRestart
         clearLaunchState()
-        notice = exitRequested ? "Launch cancelled; DuckStation was already asked to quit." : "Launch cancelled."
+        notice = exitRequested ? "Inicialização cancelada; o encerramento do emulador já foi solicitado." : "Inicialização cancelada."
     }
     private func clearLaunchState() {
         launching = nil
         launchID = nil
         launchURL = nil
         launchGameURL = nil
+        launchGameID = nil
         launchGameTitle = nil
-        restartDuckStation = nil
+        restartEmulator = nil
         waitingForRestart = false
         isOpening = false
     }
@@ -651,54 +930,69 @@ final class LauncherModel: ObservableObject {
             return false
         }
         guard GameLaunchCheck.isAvailable(file, library: gameFolder(for: console)) else {
-            errorMessage = "Could not access \(title). Check the files and permissions in the \(console.badge) folder:\n\(gameFolder(for: console).path)\n\nUse Game folders to fix the location, or Reload, R or R2+L2 to reload the catalog."
+            errorMessage = "Não foi possível acessar \(title). Confira os arquivos e as permissões na pasta do \(console.badge):\n\(gameFolder(for: console).path)\n\nUse Local dos jogos para corrigir a pasta ou Atualizar / R / R2+L2 para atualizar a biblioteca."
             return false
         }
         return true
     }
     func launchGame(_ game: CatalogGame) {
+        guard !showingExperienceSettings, !showingSessionMenu, dialog == nil else { return }
         guard let console = Console(rawValue: game.consoleKey), launching == nil, !booting,
               errorMessage == nil, storageNotice == nil, !showingLibrarySettings, !showingCatalogFolders,
               !stopping.contains(console), NSApp.modalWindow == nil else { return }
-        guard checkGameAccess(game.fileURL, title: game.title, console: console) else { return }
         refreshSessions()
         let current = state(console)
         if current.isRunning && sameLoadedGame(game, path: current.gamePath) {
-            launch(console)
+            returnToGame(console)
             return
         }
+        guard checkGameAccess(game.fileURL, title: game.title, console: console) else { return }
         guard canOpenGame(console) else { return }
-        var restart: (pid: Int32, launchedAt: Date?)?
-        if console == .ps1, current.isRunning, let pid = current.pid {
-            let alert = NSAlert()
-            alert.messageText = "Open \(game.title)?"
-            alert.informativeText = "To start this game directly, the launcher needs to quit and reopen DuckStation. Save any session before continuing. Quitting is a normal request and respects the emulator's own confirmations."
-            alert.addButton(withTitle: "Cancel")
-            alert.addButton(withTitle: "Open game")
-            guard alert.runModal() == .alertSecondButtonReturn else { return }
-            restart = (pid, current.launchedAt)
+        if current.isRunning, let pid = current.pid {
+            dialogAcceptSelected = false
+            dialog = LauncherDialog(title: "Abrir \(game.title)?", message: "Para iniciar em tela cheia, precisamos fechar e reabrir \(console.emulator). Salve antes de continuar. O encerramento é normal e respeita as confirmações do emulador.", acceptTitle: "Abrir jogo") { [weak self] in
+                guard let self else { return }
+                self.refreshSessions()
+                guard self.state(console).pid == pid, self.state(console).launchedAt == current.launchedAt,
+                      self.canOpenGame(console) else { return }
+                self.prepareGame(game, console: console, restart: (pid, current.launchedAt))
+            }
+            return
         }
+        prepareGame(game, console: console, restart: nil)
+    }
+    private func prepareGame(_ game: CatalogGame, console: Console, restart: (pid: Int32, launchedAt: Date?)?) {
         launch(console)
         guard launching == console else { return }
         launchGameURL = game.fileURL
+        launchGameID = game.id
         launchGameTitle = game.title
-        restartDuckStation = restart
+        restartEmulator = restart
+        gameSelection[console.rawValue] = game.id
+        rememberCatalogSelection()
+    }
+    var isSelectedGameRunning: Bool {
+        guard let game = selectedGame, let console = Console(rawValue: game.consoleKey) else { return false }
+        return state(console).isRunning && sameLoadedGame(game, path: state(console).gamePath)
+    }
+    func returnToGame(_ console: Console) {
+        guard let pid = state(console).pid, let app = NSRunningApplication(processIdentifier: pid),
+              app.bundleIdentifier == console.bundleID, !app.isTerminated else { return }
+        app.activate(options: [])
     }
     private func sameLoadedGame(_ game: CatalogGame, path: String?) -> Bool {
         guard let path else { return false }
         let loaded = URL(fileURLWithPath: path).standardizedFileURL
         let requested = game.fileURL.standardizedFileURL
         if loaded.path == requested.path { return true }
-        guard ["cue", "ccd"].contains(requested.pathExtension.lowercased()),
-              loaded.deletingLastPathComponent().path == requested.deletingLastPathComponent().path else { return false }
-        let stem = loaded.deletingPathExtension().lastPathComponent
-            .replacingOccurrences(of: #"(?i)\s*(?:\(|\[)track[\s_-]*\d+(?:\)|\])\s*$"#, with: "", options: .regularExpression)
-        return stem.caseInsensitiveCompare(requested.deletingPathExtension().lastPathComponent) == .orderedSame
+        // Playlist/track ownership comes from the saved exact-member inventory,
+        // never a filename resemblance or a scan of an unplugged drive.
+        return resolvedSessionGameIDs[game.consoleKey] == game.id
     }
     private func canOpenGame(_ console: Console) -> Bool {
         let current = state(console)
         if current.isRunning && (current.gamePath != nil || current.activityDescription != "Emulator open · no game detected") {
-            errorMessage = "\(console.emulator) already has a session open, or its state could not be confirmed yet. Close the current game in the emulator and try again. The launcher will not swap the disc or interrupt your game."
+            errorMessage = "\(console.emulator) já tem uma sessão aberta ou ainda não foi possível confirmar seu estado. Encerre o jogo atual no emulador e tente novamente. A central não trocará o disco nem interromperá seu jogo."
             return false
         }
         return true
@@ -713,17 +1007,17 @@ final class LauncherModel: ObservableObject {
             }
         }
         isOpening = true
-        notice = "Opening \(console.emulator)…"
+        notice = "Abrindo \(console.emulator)…"
         openingText = notice
-        if console == .ps1, launchGameURL != nil, state(console).isRunning {
-            guard let accepted = restartDuckStation, accepted.pid == state(console).pid,
+        if launchGameURL != nil, state(console).isRunning {
+            guard let accepted = restartEmulator, accepted.pid == state(console).pid,
                   accepted.launchedAt == state(console).launchedAt, let pid = state(console).pid,
                   let app = NSRunningApplication(processIdentifier: pid), app.bundleIdentifier == console.bundleID else {
                 finishLaunch(id, console: console, app: nil, error: nil)
-                errorMessage = "The DuckStation session changed during the animation. No new session was quit. Try again."
+                errorMessage = "A sessão de \(console.emulator) mudou durante a animação. Nenhuma outra sessão foi encerrada. Tente novamente."
                 return
             }
-            openingText = "Reopening DuckStation to start the game…"
+            openingText = "Reabrindo \(console.emulator)…"
             waitingForRestart = true
             app.activate(options: [])
             guard app.terminate() else {
@@ -741,7 +1035,7 @@ final class LauncherModel: ObservableObject {
                 }
                 guard let self, self.launchID == id else { return }
                 self.finishLaunch(id, console: console, app: nil, error: nil)
-                self.errorMessage = "DuckStation stayed open. Confirm or cancel quitting in the emulator and try again. Nothing was force-quit."
+                self.errorMessage = "\(console.emulator) continua aberto. Confirme ou cancele a saída no emulador e tente novamente. Nada foi encerrado à força."
             }
             return
         }
@@ -750,7 +1044,7 @@ final class LauncherModel: ObservableObject {
     private func openRequestedApplication(_ id: UUID, console: Console, url: URL) {
         guard launchID == id else { return }
         waitingForRestart = false
-        openingText = "Opening \(console.emulator)…"
+        openingText = "Abrindo \(console.emulator)…"
         if let gameURL = launchGameURL,
            !checkGameAccess(gameURL, title: launchGameTitle ?? gameURL.deletingPathExtension().lastPathComponent, console: console) {
             clearLaunchState()
@@ -759,10 +1053,10 @@ final class LauncherModel: ObservableObject {
         }
         if launchGameURL != nil {
             refreshSessions()
-            guard canOpenGame(console), console != .ps1 || !state(console).isRunning else {
+            guard canOpenGame(console), !state(console).isRunning else {
                 let explanation = errorMessage
                 finishLaunch(id, console: console, app: nil, error: nil)
-                errorMessage = explanation ?? "DuckStation opened again before the game was sent. Quit the session and try again."
+                errorMessage = explanation ?? "\(console.emulator) abriu antes de enviarmos o jogo. Encerre essa sessão e tente novamente."
                 return
             }
         }
@@ -776,12 +1070,8 @@ final class LauncherModel: ObservableObject {
             }
         }
         if let game = launchGameURL {
-            if console == .ps2 {
-                NSWorkspace.shared.open([game], withApplicationAt: url, configuration: configuration, completionHandler: completion)
-            } else {
-                configuration.arguments = ["--", game.path]
-                NSWorkspace.shared.openApplication(at: url, configuration: configuration, completionHandler: completion)
-            }
+            configuration.arguments = EmulatorLaunchArguments.game(game)
+            NSWorkspace.shared.openApplication(at: url, configuration: configuration, completionHandler: completion)
         } else {
             NSWorkspace.shared.openApplication(at: url, configuration: configuration, completionHandler: completion)
         }
@@ -789,47 +1079,72 @@ final class LauncherModel: ObservableObject {
     private func finishLaunch(_ id: UUID, console: Console, app: NSRunningApplication?, error: Error?) {
         guard launchID == id else { return }
         let title = launchGameTitle
+        let validApp = app.flatMap { !$0.isTerminated && $0.bundleIdentifier == console.bundleID ? $0 : nil }
+        if error == nil, let app = validApp, let gameURL = launchGameURL {
+            let record = OwnedGameSession(consoleKey: console.rawValue, pid: app.processIdentifier, launchedAt: app.launchDate,
+                                          gameID: launchGameID ?? gameURL.path, gameURL: gameURL,
+                                          libraryRoot: gameFolder(for: console))
+            ownedSessions[console.rawValue] = record
+            pendingHistory.insert(console.rawValue)
+        }
         clearLaunchState()
         refreshSessions()
         if let error {
             notice = ""
-            errorMessage = "Could not open \(console.emulator). \(error.localizedDescription)"
-        } else if app != nil {
-            notice = title.map { "Launch of \($0) sent to \(console.emulator)." } ?? "\(console.emulator) is open. Have a good game."
+            errorMessage = "Não foi possível abrir \(console.emulator). \(error.localizedDescription)"
+        } else if validApp != nil {
+            notice = title.map { "\($0) enviado para \(console.emulator)." } ?? "\(console.emulator) está aberto. Bom jogo!"
         } else {
             notice = ""
-            errorMessage = "Could not finish opening \(console.emulator). Check its window and try again."
+            errorMessage = "Não foi possível concluir a abertura de \(console.emulator). Confira a janela dele e tente novamente."
         }
     }
     func requestStop(_ console: Console) {
+        guard !hasOverlay else { return }
         guard launching == nil, storageNotice == nil, !stopping.contains(console), NSApp.modalWindow == nil else { return }
         refreshSessions()
         guard let pid = state(console).pid else { return }
-        let alert = NSAlert()
-        alert.messageText = "Turn off \(console.badge)?"
-        alert.informativeText = "\(console.emulator) will be asked to quit normally. Save your game before continuing. If the emulator asks for confirmation, that prompt appears in its own window. The launcher stays open."
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "Cancel")
-        alert.addButton(withTitle: "Turn off")
-        guard alert.runModal() == .alertSecondButtonReturn,
-              let app = NSRunningApplication(processIdentifier: pid),
+        let launchedAt = state(console).launchedAt
+        dialogAcceptSelected = false
+        dialog = LauncherDialog(title: "Desligar \(console.badge)?", message: "Salve seu jogo antes de continuar. Vamos solicitar a saída normal de \(console.emulator), sem forçar o encerramento. Uma confirmação adicional pode aparecer no emulador.", acceptTitle: "Desligar") { [weak self] in
+            self?.stopConfirmed(console, pid: pid, launchedAt: launchedAt)
+        }
+    }
+    private func stopConfirmed(_ console: Console, pid: Int32, launchedAt: Date?) {
+        guard let app = NSRunningApplication(processIdentifier: pid), app.launchDate == launchedAt,
               app.bundleIdentifier == console.bundleID, !app.isTerminated else { return }
         stopping.insert(console)
         stopDeadlines[console] = Date().addingTimeInterval(15)
-        notice = "Asking \(console.emulator) to quit…"
+        notice = "Solicitando saída de \(console.emulator)…"
         app.activate(options: [])
         if !app.terminate() {
             stopping.remove(console)
             stopDeadlines.removeValue(forKey: console)
-            errorMessage = "\(console.emulator) did not accept the request to quit. Save your game and quit from the emulator's own menu."
+            errorMessage = "\(console.emulator) não aceitou o pedido de saída. Salve o jogo e saia pelo menu do próprio emulador."
         }
         refreshSessions()
+    }
+    private func sessionTerminated(_ app: NSRunningApplication) {
+        guard let pair = ownedSessions.first(where: { $0.value.matches(pid: app.processIdentifier, launchedAt: app.launchDate) }) else { return }
+        ownedSessions.removeValue(forKey: pair.key)
+        pendingHistory.remove(pair.key)
+        refreshSessions()
+        guard launching == nil, let console = Console(rawValue: pair.key) else { return }
+        notice = "Sessão encerrada · \(console.badge)"
+        // Do not steal focus from a different foreground app or overwrite a dialog.
+        guard !hasOverlay, lastFrontmostPID == app.processIdentifier || NSApp.isActive else { return }
+        selected = console
+        catalogConsole = console
+        catalogCommand = nil
+        selectedCatalogFolderID = nil
+        gameSelection[pair.key] = pair.value.gameID
+        returnToLauncher?()
     }
     var storageText: String {
         let console = catalogConsole ?? selected
         let location = librarySettings.location(for: console.rawValue)
         if storageMounted { return notice.isEmpty ? "\(location.volumeName) · \(console.badge)" : notice }
-        return "\(location.volumeName) disconnected · Saved catalog available"
+        return "\(location.volumeName) desconectado · Biblioteca salva disponível"
     }
 }
 
@@ -946,7 +1261,7 @@ struct ConsoleOption: View {
     var session: EmulatorState { model.state(console) }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-          Button { model.launch(console) } label: {
+          Button { model.openConsoleCatalog(console) } label: {
             HStack(spacing: 15) {
                 PlayerOneIndicator(selected: selected)
                 if let image = Theme.images[console.asset] {
@@ -967,9 +1282,9 @@ struct ConsoleOption: View {
             .padding(.horizontal, 13).frame(height: 76).contentShape(Rectangle())
           }
           .buttonStyle(.plain).disabled(model.launching != nil || model.stopping.contains(console))
-          .accessibilityLabel("Open \(console.name) — \(console.emulator)")
+          .accessibilityLabel("Entrar na biblioteca do \(console.name)")
           .accessibilityValue(selected ? "Selected · P1, player 1" : "")
-          .help("Play the \(console.badge) startup and open \(console.emulator)")
+          .help("Entrar no ambiente do \(console.badge) e escolher um jogo")
           HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 6) {
@@ -986,7 +1301,7 @@ struct ConsoleOption: View {
                                        source: catalog.source(for: console.rawValue))
                         .id(path)
                 } else {
-                    Text(session.isRunning ? session.activityDescription : "Ready to start")
+                    Text(session.isRunning ? session.gameTitle ?? "Emulador aberto" : "Sua biblioteca está pronta")
                         .font(.system(size: 12)).foregroundStyle(Theme.pale.opacity(0.65))
                         .lineLimit(1).truncationMode(.middle)
                         .help(session.activityDescription)
@@ -994,7 +1309,7 @@ struct ConsoleOption: View {
             }.frame(maxWidth: .infinity, alignment: .leading)
             if session.isRunning {
                 Button { model.requestStop(console) } label: {
-                    Label(model.stopping.contains(console) ? "Quitting…" : "Turn off", systemImage: "power")
+                    Label(model.stopping.contains(console) ? "Saindo…" : "Desligar", systemImage: "power")
                         .font(.system(size: 11)).padding(.horizontal, 10).padding(.vertical, 7)
                         .foregroundStyle(Color(red: 1, green: 0.65, blue: 0.64))
                         .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 5))
@@ -1025,7 +1340,7 @@ struct ConsolePreview: View {
                 .shadow(color: Theme.blue.opacity(0.10), radius: 16)
             HStack(spacing: 8) {
                 Text(console.badge).font(.system(size: 11, weight: .medium)).foregroundStyle(Theme.ice)
-                Text("Preview · does not start the emulator").font(.system(size: 10)).foregroundStyle(Theme.pale.opacity(0.65))
+                Text("Escolha seu console. Reviva seus jogos.").font(.system(size: 10)).foregroundStyle(Theme.pale.opacity(0.65))
             }
         }
         .allowsHitTesting(false)
@@ -1049,11 +1364,10 @@ struct SystemMenu: View {
                         .foregroundStyle(Theme.pale.opacity(0.6))
                 }
                 Spacer()
-                CatalogReloadButton(model: model, catalog: model.catalog)
-                Button { model.showLibrarySettings() } label: {
-                    Label("Game folders", systemImage: "folder.badge.gearshape")
+                Button { model.showSessionMenu() } label: {
+                    Label("Opções", systemImage: "slider.horizontal.3")
                         .font(.system(size: 11)).foregroundStyle(Theme.ice.opacity(0.85))
-                }.buttonStyle(.plain).help("Choose the PS1 and PS2 folders · ⌘,")
+                }.buttonStyle(.plain).help("Sessão, ambiente e pastas · Options / S")
                 TimelineView(.periodic(from: .now, by: 30)) { time in
                     VStack(alignment: .trailing, spacing: 5) {
                         Text(time.date, format: .dateTime.hour().minute()).font(.system(size: 16, weight: .regular, design: .monospaced))
@@ -1070,15 +1384,15 @@ struct SystemMenu: View {
             VStack(spacing: 21) {
                 Rectangle().fill(LinearGradient(colors: [.clear, Theme.ice.opacity(0.19), .clear], startPoint: .leading, endPoint: .trailing)).frame(height: 1)
                 HStack(spacing: 24) {
-                    Button { model.confirm() } label: { hint("×", "Confirm", "Enter", Theme.ice) }
-                    Button { model.back() } label: { hint("○", "Back", "Esc", Color(red: 0.92, green: 0.49, blue: 0.51)) }
-                    Button { model.toggleFullscreen?() } label: { hint("□", model.fullscreen ? "Window" : "Full screen", "F", Color(red: 0.83, green: 0.58, blue: 0.80)) }
-                    Button { model.showCatalog() } label: { hint("△", "List \(model.selected.badge) games", "T", Color(red: 0.4, green: 0.9, blue: 0.68)) }
+                    Button { model.confirm() } label: { hint("×", "Entrar", "Enter", Theme.ice) }
+                    Button { model.back() } label: { hint("○", "Voltar", "Esc", Color(red: 0.92, green: 0.49, blue: 0.51)) }
+                    Button { model.toggleFullscreen?() } label: { hint("□", model.fullscreen ? "Janela" : "Tela cheia", "F", Color(red: 0.83, green: 0.58, blue: 0.80)) }
+                    Button { model.showCatalog() } label: { hint("△", "Jogos \(model.selected.badge)", "T", Color(red: 0.4, green: 0.9, blue: 0.68)) }
                         .accessibilityLabel("List \(model.selected.badge) games")
                     Spacer()
                     HStack(spacing: 8) {
                         Image(systemName: "arrow.up.arrow.down").font(.system(size: 12))
-                        Text("Select").font(.system(size: 12))
+                        Text("Selecionar").font(.system(size: 12))
                     }.foregroundStyle(Theme.pale.opacity(0.52))
                      .help("Arrow keys, D-pad or left stick to select")
                 }.buttonStyle(.plain)
@@ -1108,9 +1422,9 @@ struct SystemMenu: View {
     }
     private var consoleChoices: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Emulator").font(.system(size: 32, weight: .light, design: .rounded))
+            Text("Emulador").font(.system(size: 32, weight: .light, design: .rounded))
                 .foregroundStyle(Theme.pale).shadow(color: Theme.blue.opacity(0.25), radius: 9).padding(.bottom, 9)
-            Text("Select a console · follow its session").font(.system(size: 12)).tracking(0.6)
+            Text("Dois consoles. Duas gerações. Sua coleção.").font(.system(size: 12)).tracking(0.6)
                 .foregroundStyle(Theme.pale.opacity(0.62)).padding(.bottom, 18)
             ConsoleOption(console: .ps1, model: model)
             ConsoleOption(console: .ps2, model: model)
@@ -1147,8 +1461,8 @@ struct LauncherView: View {
         GeometryReader { geometry in
             let layout = LauncherLayout(size: geometry.size)
             ZStack {
-                Theme.background
-                SystemScene(active: model.isForeground && model.launching == nil && model.catalogConsole == nil && model.previewConsole == nil && !model.showingLibrarySettings, reduceMotion: model.reduceMotion, booting: model.booting, startedAt: model.startedAt, showOrbs: model.previewConsole == nil)
+                ConsolePalette.forConsole(model.activeConsole).background
+                ConsoleAtmosphere(console: model.activeConsole, active: model.isForeground && model.launching == nil && !model.hasOverlay, reduceMotion: model.reduceMotion)
                     .frame(width: layout.canvasSize.width, height: layout.canvasSize.height)
                 ZStack {
                     if model.booting { BootOverlay(model: model).transition(.opacity) }
@@ -1156,33 +1470,44 @@ struct LauncherView: View {
                         GameCatalogView(console: console, layout: layout, model: model, catalog: model.catalog).transition(.opacity)
                     } else { SystemMenu(model: model, layout: layout).transition(.opacity) }
                 }.frame(width: layout.canvasSize.width, height: layout.canvasSize.height)
-                    .accessibilityHidden(model.launching != nil || model.storageNotice != nil || model.showingLibrarySettings)
-                    .allowsHitTesting(model.launching == nil && model.storageNotice == nil && !model.showingLibrarySettings)
-                    .disabled(model.storageNotice != nil || model.showingLibrarySettings)
+                    .accessibilityHidden(model.launching != nil || (model.hasOverlay && !model.showingCatalogFolders))
+                    .allowsHitTesting(model.launching == nil && (!model.hasOverlay || model.showingCatalogFolders))
+                    .disabled(model.hasOverlay && !model.showingCatalogFolders)
                 if model.showingLibrarySettings {
                     LibrarySettingsView(model: model, settings: model.librarySettings)
                         .frame(width: layout.canvasSize.width, height: layout.canvasSize.height)
                         .zIndex(5)
                 }
+                if model.showingSessionMenu {
+                    SessionMenuView(model: model)
+                        .frame(width: layout.canvasSize.width, height: layout.canvasSize.height).zIndex(6)
+                }
+                if model.showingExperienceSettings {
+                    ExperienceSettingsView(preferences: model.experience, console: model.activeConsole) { model.showingExperienceSettings = false }
+                        .frame(width: layout.canvasSize.width, height: layout.canvasSize.height).zIndex(7)
+                }
                 if let console = model.launching, let id = model.launchID {
                     Color.black.ignoresSafeArea()
                     VStack(spacing: 18) {
                         HStack {
-                            Text("STARTING \(console.badge)").tracking(3)
+                            Text("INICIANDO \(console.badge)").tracking(3)
                             Spacer()
+                            if !model.isOpening {
+                                Button("Pular · × / Enter") { model.skipStartup() }.buttonStyle(.plain)
+                            }
                             if !model.isOpening || model.waitingForRestart {
-                                Button("Cancel · Esc") { model.cancelLaunch() }.buttonStyle(.plain)
+                                Button("Cancelar · ○ / Esc") { model.cancelLaunch() }.buttonStyle(.plain)
                             }
                         }.font(.system(size: 12)).foregroundStyle(Theme.pale.opacity(0.6))
                         if model.isOpening {
                             Spacer()
                             ProgressView(model.openingText).foregroundStyle(Theme.ice)
                             Spacer()
-                        } else {
+                        } else if model.experience.startupMode != .off {
                             StartupAnimationView(resourceName: console == .ps1 ? "PS1Startup" : "PS2Startup", reducedMotion: model.reduceMotion) {
                                 model.animationFinished(id)
                             }.id(id)
-                            Text(model.launchGameTitle.map { "\($0) · \(console.emulator)" } ?? "The startup finishes before \(console.emulator) is opened")
+                            Text(model.launchGameTitle.map { "\($0) · \(console.emulator)" } ?? "Preparando \(console.badge)")
                                 .font(.system(size: 11)).foregroundStyle(Theme.pale.opacity(0.4))
                         }
                     }.padding(35).frame(maxWidth: 1000, maxHeight: .infinity)
@@ -1192,6 +1517,10 @@ struct LauncherView: View {
                         .frame(width: layout.canvasSize.width, height: layout.canvasSize.height)
                         .zIndex(10)
                 }
+                if model.dialog != nil || model.errorMessage != nil {
+                    LauncherMessageView(model: model)
+                        .frame(width: layout.canvasSize.width, height: layout.canvasSize.height).zIndex(11)
+                }
             }.frame(width: layout.canvasSize.width, height: layout.canvasSize.height)
                 .scaleEffect(layout.scale, anchor: .center)
                 .frame(width: geometry.size.width, height: geometry.size.height)
@@ -1200,9 +1529,6 @@ struct LauncherView: View {
         .background(Theme.background)
         .ignoresSafeArea()
         .preferredColorScheme(.dark)
-        .alert("PS1/2", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
-            Button("OK") { model.errorMessage = nil }
-        } message: { Text(model.errorMessage ?? "") }
     }
 }
 
@@ -1224,12 +1550,8 @@ private enum DockIconRefresh {
         guard isInstalledApp(bundleURL),
               UserDefaults.standard.string(forKey: defaultsKey) != icon.token else { return }
         let mine = bundleURL.path
-        let identity = Bundle.main.bundleIdentifier ?? ""
-        let others = NSWorkspace.shared.urlsForApplications(withBundleIdentifier: identity)
-            .map { $0.standardizedFileURL.resolvingSymlinksInPath().path }
-            .filter { $0 != mine }
         DispatchQueue.global(qos: .utility).async {
-            guard reregister(mine: mine, others: others) else { return }
+            guard reregister(mine: mine) else { return }
             DispatchQueue.main.async {
                 UserDefaults.standard.set(icon.token, forKey: defaultsKey)
             }
@@ -1254,16 +1576,11 @@ private enum DockIconRefresh {
         return path.hasSuffix(".app")
     }
 
-    private static func reregister(mine: String, others: [String]) -> Bool {
+    private static func reregister(mine: String) -> Bool {
         guard FileManager.default.isExecutableFile(atPath: lsregister) else { return false }
-        for path in others { _ = run(lsregister, ["-u", path]) }
-        guard run(lsregister, ["-f", mine]) else { return false }
-        let cache = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Caches/com.apple.iconservices.store", isDirectory: true)
-        try? FileManager.default.removeItem(at: cache)
-        _ = run("/usr/bin/killall", ["iconservicesagent"])
-        _ = run("/usr/bin/killall", ["Dock"])
-        return true
+        // Publish only our own bundle. Opening the launcher must not restart
+        // the user's Dock, erase system caches or unregister other checkouts.
+        return run(lsregister, ["-f", mine])
     }
 
     private static func run(_ launchPath: String, _ arguments: [String]) -> Bool {
@@ -1363,6 +1680,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.center()
         configureWindowButton()
         model.toggleFullscreen = { [weak self] in self?.toggleFullscreen() }
+        model.returnToLauncher = { [weak self] in self?.showWindow() }
         model.chooseLibraryFolder = { [weak self] in self?.chooseGameFolder($0) }
         controllerInput = ControllerInput(onMove: { [weak self] direction in self?.handleController { $0.move(direction) } },
                                           onVerticalMove: { [weak self] direction in self?.handleController { $0.moveVertical(direction) } },
@@ -1394,6 +1712,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 if organizing { return "catalog-folders" }
                 return console.map { "catalog-\($0.rawValue)" } ?? "menu"
             }
+            .combineLatest(model.$dialog.map { $0 != nil }, model.$showingExperienceSettings, model.$showingSessionMenu)
+            .map { base, dialog, experience, session -> String? in
+                if dialog { return "dialog" }
+                if experience { return "experience" }
+                if session { return "session" }
+                return base
+            }
             .removeDuplicates()
             .sink { [weak self] _ in
                 DispatchQueue.main.async { [weak self] in self?.controllerInput?.refreshAnalogNavigation() }
@@ -1409,8 +1734,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     private func handleKey(_ event: NSEvent) -> NSEvent? {
         guard NSApp.isActive, NSApp.keyWindow === window, window?.attachedSheet == nil,
-              NSApp.modalWindow == nil, model.errorMessage == nil, !model.choosingLibraryFolder else { return event }
+              NSApp.modalWindow == nil, !model.choosingLibraryFolder else { return event }
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if model.dialog != nil || model.errorMessage != nil || model.showingSessionMenu || model.showingExperienceSettings {
+            if modifiers.contains(.command) { return event }
+            switch event.keyCode {
+            case 53: model.back()
+            case 36, 76: if !event.isARepeat { model.confirm() }
+            case 123: model.move(-1)
+            case 124: model.move(1)
+            case 125: model.moveVertical(1)
+            case 126: model.moveVertical(-1)
+            default: return event.keyCode == 48 ? event : nil
+            }
+            return nil
+        }
+        // Text entry owns letters, arrows and standard editing shortcuts. In
+        // particular typing F/R/T in search must never launch another action.
+        if let editor = window.firstResponder as? NSTextView, editor.isEditable {
+            if event.keyCode == 53 { window.makeFirstResponder(nil); return nil }
+            return event
+        }
         if model.storageNotice != nil {
             // Keep system shortcuts and Tab navigation, but no console/game
             // shortcuts may act through the storage dialog.
@@ -1421,7 +1765,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         if model.showingCatalogFolders {
             if event.keyCode == 53 { model.back(); return nil }
-            if [123, 124, 125, 126].contains(event.keyCode), !event.isARepeat {
+            if [123, 124, 125, 126].contains(event.keyCode) {
                 if event.keyCode == 123 { model.move(-1) }
                 else if event.keyCode == 124 { model.move(1) }
                 else if event.keyCode == 126 { model.moveVertical(-1) }
@@ -1434,22 +1778,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if modifiers.contains(.command) {
             if event.charactersIgnoringModifiers == "," { model.showLibrarySettings(); return nil }
             if model.showingLibrarySettings { return event }
-            if event.charactersIgnoringModifiers == "1" { model.finishBoot(); model.launch(.ps1); return nil }
-            if event.charactersIgnoringModifiers == "2" { model.finishBoot(); model.launch(.ps2); return nil }
+            if event.charactersIgnoringModifiers == "1" { model.finishBoot(); model.openConsoleCatalog(.ps1); return nil }
+            if event.charactersIgnoringModifiers == "2" { model.finishBoot(); model.openConsoleCatalog(.ps2); return nil }
             return event
         }
         if modifiers.contains(.control) || modifiers.contains(.option) { return event }
         switch event.keyCode {
-        case 123: if !event.isARepeat { model.move(-1) }; return nil
-        case 124: if !event.isARepeat { model.move(1) }; return nil
-        case 126: if !event.isARepeat { model.moveVertical(-1) }; return nil
-        case 125: if !event.isARepeat { model.moveVertical(1) }; return nil
+        case 123: if !event.isARepeat || model.catalogConsole != nil { model.move(-1) }; return nil
+        case 124: if !event.isARepeat || model.catalogConsole != nil { model.move(1) }; return nil
+        case 126: if !event.isARepeat || model.catalogConsole != nil { model.moveVertical(-1) }; return nil
+        case 125: if !event.isARepeat || model.catalogConsole != nil { model.moveVertical(1) }; return nil
         case 36, 76: if !event.isARepeat { model.confirm() }; return nil
         case 53: model.back(); return nil
         default:
             if event.charactersIgnoringModifiers?.lowercased() == "f", !event.isARepeat { toggleFullscreen(); return nil }
             if event.charactersIgnoringModifiers?.lowercased() == "t", !event.isARepeat { model.showCatalog(); return nil }
             if event.charactersIgnoringModifiers?.lowercased() == "r", !event.isARepeat { model.reloadCatalog(); return nil }
+            if event.charactersIgnoringModifiers?.lowercased() == "s", !event.isARepeat { model.showSessionMenu(); return nil }
             if model.catalogConsole != nil, !model.showingLibrarySettings, !event.isARepeat {
                 switch event.charactersIgnoringModifiers?.lowercased() {
                 case "a": model.setCatalogSort(ascending: true); return nil
@@ -1465,7 +1810,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func handleController(_ action: (LauncherModel) -> Void) {
         guard NSApp.isActive, window?.isKeyWindow == true, window?.isVisible == true,
               window?.isMiniaturized == false, window?.attachedSheet == nil,
-              !model.choosingLibraryFolder, model.errorMessage == nil, NSApp.modalWindow == nil else { return }
+              !model.choosingLibraryFolder, NSApp.modalWindow == nil else { return }
+        if window.firstResponder is NSTextView { window.makeFirstResponder(nil) }
         action(model)
     }
     private var analogNavigationContext: String? {
@@ -1473,6 +1819,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
               window?.isMiniaturized == false, window?.attachedSheet == nil,
               NSApp.modalWindow == nil, !model.booting, model.launching == nil,
               model.errorMessage == nil, model.storageNotice == nil, !model.choosingLibraryFolder else { return nil }
+        if model.dialog != nil { return "dialog" }
+        if model.showingExperienceSettings { return "experience" }
+        if model.showingSessionMenu { return "session" }
         if model.showingLibrarySettings { return "library-settings" }
         if model.showingCatalogFolders { return "catalog-folders" }
         return model.catalogConsole.map { "catalog-\($0.rawValue)" } ?? "menu"
@@ -1481,9 +1830,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         model.isForeground = NSApp.isActive && window?.isVisible == true && window?.isMiniaturized == false
             && window?.occlusionState.contains(.visible) == true
         NSApp.presentationOptions = model.fullscreen && model.isForeground ? [.autoHideDock, .autoHideMenuBar] : []
+        if !model.isForeground { model.sounds.stop() }
+        model.catalog.setArtworkPrefetchSuspended(!model.isForeground && model.sessions.values.contains(where: \.isRunning))
         controllerInput?.refreshAnalogNavigation()
     }
     func applicationDidBecomeActive(_ notification: Notification) {
+        model.refreshStorage()
+        model.refreshSessions()
         updateActivity()
     }
     func applicationDidResignActive(_ notification: Notification) { updateActivity() }
@@ -1530,7 +1883,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.standardWindowButton(.zoomButton)?.action = #selector(toggleFullscreen)
     }
     @objc private func toggleFullscreen() {
-        guard model.storageNotice == nil, !model.showingLibrarySettings, !model.showingCatalogFolders else { return }
+        guard !model.hasOverlay, model.launching == nil else { return }
         if model.fullscreen {
             model.fullscreen = false
             NSApp.presentationOptions = []
@@ -1576,7 +1929,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func showAbout() {
         let alert = NSAlert()
         alert.messageText = "PS1/2"
-        alert.informativeText = "Version 4.12 · Interface inspired by the PlayStation 2\n\nIn Game folders (⌘,), choose a library for each console on the Mac or on an external disk. The default stays on the Extreme SSD. Files are not moved and the emulator settings stay as they are.\n\nIn the catalog, ↑ on the first game reaches A–Z, Folders, Reload and Disk. × confirms the marked option and ↓ returns to the games.\n\nSaved catalogs and covers can be browsed offline. To play, the files must be available; reconnecting a disk does not start games automatically.\n\nUse the arrow keys, D-pad or left stick to select, Enter / X to confirm, T / △ to list games, R or R2+L2 to reload games and covers, L1 / A and R1 / Z for the order, P or Options for folders, C to collapse the selected game's folder, F / □ for full screen and Esc / ○ to go back. Return the stick to center when changing screens.\n\nLogo: supplied by the user.\nPhotos: Evan-Amos / Wikimedia — public domain.\nGIFs: Tenor; full credits are in the app package.\n\nA personal launcher for DuckStation and PCSX2, with no official link to Sony."
+        alert.informativeText = "Versão 5.0 · PlayStation Retro Emulator\n\n× entra na biblioteca e inicia o jogo. ○ volta, □ alterna tela cheia e △ abre ou atualiza o catálogo. S abre as opções da sessão.\n\nFavoritos, recentes, busca e densidade ficam na biblioteca. Em Experiência, escolha a animação de início, os sons e o movimento. Sons originais, opcionais e desligados por padrão.\n\nEscolha as pastas em PS1/2 → Pastas dos jogos (⌘,). O catálogo e as capas em cache funcionam offline; para jogar, conecte o disco. Jogos, BIOS, saves e configurações dos emuladores não são movidos.\n\nDuckStation e PCSX2 continuam sendo aplicativos independentes. A central inicia jogos em tela cheia e acompanha as sessões que abriu; não salva nem restaura progresso.\n\nLogo: fornecido pelo usuário. Fotos: Evan-Amos / Wikimedia, domínio público. GIFs: Tenor. Créditos completos no pacote. Sem vínculo oficial com Sony."
         alert.icon = Theme.images["Logo"]
         alert.addButton(withTitle: "OK")
         alert.runModal()
@@ -1585,12 +1938,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let menu = NSMenu()
         let appItem = NSMenuItem()
         let appMenu = NSMenu(title: "PS1/2")
-        appMenu.addItem(withTitle: "About PS1/2", action: #selector(showAbout), keyEquivalent: "")
-        appMenu.addItem(withTitle: "Game folders…", action: #selector(showGameFolders), keyEquivalent: ",")
+        appMenu.addItem(withTitle: "Sobre PS1/2", action: #selector(showAbout), keyEquivalent: "")
+        appMenu.addItem(withTitle: "Pastas dos jogos…", action: #selector(showGameFolders), keyEquivalent: ",")
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Hide PS1/2", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        appMenu.addItem(withTitle: "Ocultar PS1/2", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Quit PS1/2", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: "Sair do PS1/2", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = appMenu
         menu.addItem(appItem)
         let item = NSMenuItem()
