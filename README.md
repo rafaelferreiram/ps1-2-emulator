@@ -27,30 +27,30 @@
 
 You bring the games and the BIOS. They stay in the folder you choose, on the Mac or on an external disk.
 
-## Instalação portátil — versão 5.0.1
+## Portable installation — version 5.0.1
 
-O instalador usa a localização real do arquivo, não o nome de usuário ou uma pasta fixa de outro Mac. Funciona com a pasta extraída em Downloads, Mesa ou outro local legível, inclusive nomes com espaços e acentos. A pasta deve permanecer no mesmo lugar até concluir a instalação.
+The installer uses its actual file location, not a fixed username or a folder from another Mac. The extracted folder can be in Downloads, Desktop or any other readable location, including names with spaces and accented characters. Keep the folder in the same place until installation finishes.
 
-- Confere os arquivos necessários do ZIP antes de pedir as ferramentas da Apple ou compilar. Se algo faltar, informa o arquivo e como extrair novamente.
-- Compila em uma pasta temporária própria, sem precisar gravar na pasta do código baixado.
-- No assistente, prefere `/Applications` se estiver gravável; senão usa `~/Applications` se essa pasta já existir e estiver gravável. O seletor também permite criar uma pasta pessoal com **Nova Pasta**, sem comandos de Terminal.
-- A central instalada procura os emuladores ao lado dela, em `/Applications`, na pasta Applications do usuário e, por último, entre os apps registrados no macOS. Confere a identidade e a presença do executável.
+- Checks the required ZIP contents before requesting Apple's tools or compiling. If a file is missing, it identifies the file and explains how to extract the download again.
+- Builds in its own temporary directory, without writing to the downloaded source folder.
+- The assistant prefers `/Applications` when it is writable; otherwise, it uses `~/Applications` if that folder already exists and is writable. The folder picker also lets you create a personal folder with **New Folder**, without Terminal commands.
+- The installed launcher looks for emulators beside itself, in `/Applications`, in the user's Applications folder and, finally, among apps registered with macOS. It verifies each app's identity and the presence of an executable.
 
-Isso não remove as confirmações do macOS: este projeto ainda **não distribui um instalador assinado com Developer ID e notarizado pela Apple**. Veja o aviso de segurança no passo 2 abaixo.
+This does not remove macOS confirmations: the project **does not yet distribute an installer signed with Developer ID and notarized by Apple**. See the security notice in step 2 below.
 
-## Novidades da versão 5.0
+## What's new in version 5.0
 
-O fluxo principal agora é **console → biblioteca → jogar → voltar à biblioteca**. PS1 e PS2 continuam usando DuckStation e PCSX2; o jogo não roda dentro da janela da central.
+The main flow is now **console → library → play → return to library**. PS1 and PS2 still use DuckStation and PCSX2; games do not run inside the launcher's window.
 
-- **Identidade por console:** PS1 em grafite com geometria e detalhes nas cores clássicas; PS2 em azul profundo com torres e círculos. Biblioteca e avisos acompanham o console selecionado. Os fundos vetoriais são locais e pausam quando a central não está ativa.
-- **Jogar e voltar:** X/Enter no console abre sua biblioteca. No jogo, inicia uma sessão em tela cheia. “Voltar ao jogo” foca a sessão já aberta sem repetir o boot. Ao encerrar uma sessão iniciada pela central, ela recupera a seleção; só traz sua janela à frente quando isso não interrompe outro app.
-- **Sua biblioteca:** Todos, Favoritos, Recentes, busca por nome e capas em tamanho Confortável ou Compacto. Filtro, busca, densidade e última seleção ficam salvos por console **e pasta de jogos**. Recentes indica jogos identificados pelo monitor após abertura pela central, não progresso, save state ou garantia de compatibilidade.
-- **Experiência:** inicialização Completa por padrão, Curta (até 1,4 segundo) ou Desligada. X/Enter pula a animação; ○/Esc cancela antes da abertura. Sons originais de navegação são opcionais e começam desligados, com volume independente do jogo. Movimento reduzido respeita o macOS e pode ser ativado também na central.
-- **Opções sem sair:** S abre o menu de sessão; Options faz isso na tela de consoles. Nele ficam voltar ao jogo, desligar normalmente, abrir o emulador avulso, Experiência e pastas. Na biblioteca, Options continua abrindo as pastas virtuais; use S ou o botão Sessão para o menu de sessão.
-- **Cache primeiro:** a última lista aparece enquanto uma atualização automática procura novidades em segundo plano. Reentradas em menos de 30 segundos não repetem a varredura; Atualizar/R/△/R2+L2 permitem atualizar explicitamente. Um jogo já listado não precisa esperar o término da varredura para ser aberto.
-- **Instalação guiada:** `Instalar.command` abre um assistente nativo, com visual inspirado no PS2, verificação do Mac, escolha do destino, etapas de progresso e botões para abrir a central e os emuladores ao terminar. Ele baixa apenas os emuladores oficiais que estiverem faltando.
+- **Console-specific identity:** PS1 uses graphite tones, geometric shapes and classic color accents; PS2 uses deep blue, towers and circles. The library and notices match the selected console. Vector backgrounds are local and pause when the launcher is inactive.
+- **Play and return:** Cross/Enter on a console opens its library; on a game, it starts a full-screen session. **Return to game** focuses an existing session without repeating the startup animation. When a session started by the launcher ends, the launcher restores the selection and brings its window forward only when doing so would not interrupt another app.
+- **Your library:** All, Favorites and Recent filters, search by name, and Comfortable or Compact covers. Filter, search, density and last selection are saved per **console and game folder**. Recent games are those identified by the monitor after launch through the app, not game progress, save states or a compatibility guarantee.
+- **Experience:** Full startup animation by default, Short (up to 1.4 seconds) or Off. Cross/Enter skips the animation; Circle/Esc cancels before launch. Original navigation sounds are optional and off by default, with volume independent of the game. Reduced motion follows macOS settings and can also be enabled in the launcher.
+- **Options without leaving:** S opens the session menu; Options does the same on the console screen. The menu includes returning to the game, quitting normally, opening the standalone emulator, experience settings and game folders. In the library, Options still opens virtual folders; use S or the **Session** button for the session menu.
+- **Cache first:** the last saved list appears while an automatic background refresh looks for changes. Reopening the library within 30 seconds does not repeat the scan; **Refresh**, R, Triangle or R2 + L2 can request an explicit update. A listed game can be opened without waiting for the scan to finish.
+- **Guided installation:** `Instalar.command` opens a native PS2-inspired assistant with Mac checks, destination selection, progress stages and buttons to open the launcher and emulators when finished. It downloads only the missing official emulators.
 
-A central não força o encerramento de emuladores, não troca um jogo já carregado por outro, não altera saves e não baixa jogos ou BIOS. Busca por texto e o seletor nativo de pastas usam teclado/mouse; os filtros, favoritos, densidade, pastas virtuais, avisos e menus podem ser operados pelo controle.
+The launcher does not force-quit emulators, replace an already loaded game, modify saves, or download games or BIOS. Text search and the native folder picker use the keyboard/mouse; filters, favorites, density, virtual folders, notices and menus support the controller.
 
 ## A look at the app
 
@@ -75,21 +75,25 @@ The three covers are a sample included in the project, so the catalog can look l
 
 ## Download and install
 
-### Comece aqui — sem precisar saber programar
+**[Download the latest source ZIP](https://github.com/rafaelferreiram/ps1-2-emulator/archive/refs/heads/main.zip)**, then follow the steps below. The current download includes the guided installer and builds the launcher on your Mac; a prebuilt `.dmg` installer is not available yet.
 
-Você precisa de um **Mac Apple Silicon (M1 ou mais novo), macOS 14 ou mais novo e internet para a instalação**. O repositório é público; não precisa de uma conta do GitHub para baixar o ZIP.
+### Start here — no programming experience needed
 
-1. No GitHub, clique em **Code → Download ZIP** e descompacte o arquivo no Finder.
-2. Abra a pasta extraída e dê dois cliques em **Instalar.command**. Não mova esse arquivo para fora da pasta do projeto. **Se aparecer “Apple could not verify…”**, o arquivo ainda não foi verificado pela Apple. Somente se você tiver baixado deste repositório e confiar na cópia, use **System Settings → Privacy & Security → Open Anyway / Abrir Mesmo Assim** para esse arquivo e confirme pessoalmente. Não desative o Gatekeeper. [Orientação oficial da Apple](https://support.apple.com/pt-pt/102445).
-3. Na primeira vez, se faltarem as ferramentas de compilação da Apple, o Terminal explica o motivo e oferece abrir o instalador oficial. Confirme somente se concordar, conclua a instalação do macOS e volte ao Terminal para continuar. Não precisa instalar Homebrew nem o Xcode completo.
-4. Na janela **PS1/2 · Instalação**, confira a verificação do Mac e o destino (normalmente **Aplicativos / Applications**). Se precisar, use **Escolher pasta…**; o seletor permite **Nova Pasta** para criar Applications dentro da sua pasta pessoal. Clique em **Instalar** e acompanhe as etapas. O assistente compila e instala a central, baixa **DuckStation para PS1** e **PCSX2 para PS2** se faltarem, e verifica os downloads.
-5. Na tela de conclusão, use os botões para abrir os emuladores e terminar a primeira configuração. Depois abra a central, escolha as **Pastas de jogos**, selecione o console e pressione **Enter / ×** para entrar na biblioteca.
+You need an **Apple Silicon Mac (M1 or later), macOS 14 or later, and internet access for installation**. The repository is public; you do not need a GitHub account to download the ZIP.
 
-**O que não vem junto:** jogos, BIOS e saves. Você precisa fornecer seus próprios arquivos autorizados, configurar a BIOS e o controle em cada emulador e testar um jogo. Se o macOS pedir Rosetta ou mostrar um aviso de segurança, leia e confirme pessoalmente — o assistente não aceita licenças nem contorna proteções. O visual é inspirado nos consoles; não é um sistema operacional da Sony.
+**Interface language:** this README is in English, but the current app, installer and screenshots use Portuguese. Interface actions are described in English below; their on-screen labels may differ. Actual filenames, commands and paths are kept unchanged.
 
-**Já tem DuckStation ou PCSX2?** Eles são mantidos. Seus jogos, BIOS, saves, configurações e SSD não são alterados. Para atualizar a central, feche **PS1/2** e execute o instalador novamente; a versão anterior fica em uma pasta de backup indicada no registro.
+1. On GitHub, click **Code → Download ZIP** and extract the archive in Finder.
+2. Open the extracted folder and double-click **Instalar.command**. Do not move this file out of the project folder. **If you see “Apple could not verify…”**, Apple has not verified the file. Only if you downloaded it from this repository and trust the copy, use **System Settings → Privacy & Security → Open Anyway** for this file and confirm yourself. Do not disable Gatekeeper. [Apple's official guidance](https://support.apple.com/en-us/102445).
+3. On the first run, if Apple's build tools are missing, Terminal explains why they are needed and offers to open the official installer. Confirm only if you agree, finish installing the tools through Apple's dialog, and return to Terminal to continue. Homebrew and the full Xcode app are not required.
+4. In the **PS1/2** installation window, review the Mac checks and destination (normally **Applications**). If needed, use **Choose folder…**; the picker supports **New Folder** to create an Applications folder inside your home folder. Click **Install** and follow the stages. The assistant builds and installs the launcher, downloads **DuckStation for PS1** and **PCSX2 for PS2** if they are missing, and verifies the downloads.
+5. On the completion screen, use the buttons to open the emulators and finish their initial setup. Then open the launcher, choose your **Game folders**, select a console and press **Enter / Cross** to enter its library.
 
-**Prefere clonar pelo Terminal?** Com Git instalado:
+**Not included:** games, BIOS or saves. You must supply your own authorized files, configure the BIOS and controller in each emulator, and test a game. If macOS requests Rosetta or shows a security notice, read and confirm it yourself — the assistant does not accept licenses or bypass protections. The appearance is console-inspired; this is not a Sony operating system.
+
+**Already have DuckStation or PCSX2?** They are preserved. Your games, BIOS, saves, settings and SSD are not changed. To update the launcher, quit **PS1/2** and run the installer again; the previous version is kept in a backup folder identified in the log.
+
+**Prefer cloning through Terminal?** With Git installed:
 
 ```bash
 git clone https://github.com/rafaelferreiram/ps1-2-emulator.git
@@ -97,9 +101,9 @@ cd ps1-2-emulator
 bash Instalar.command
 ```
 
-**Se aparecer “No such file or directory”:** não copie caminhos como `/Users/nome-de-outra-pessoa/...`. Volte à pasta completa extraída no Finder e abra o arquivo dali. Se preferir o Terminal, digite `bash` seguido de um espaço, arraste o **Instalar.command real** dessa pasta para o Terminal e pressione Enter; o Finder insere o caminho correto, inclusive os espaços. Faça isso somente para a cópia do projeto em que você confia, não como solução genérica para arquivos desconhecidos. Se o instalador disser que faltam arquivos, baixe e extraia novamente o ZIP inteiro.
+**If you see “No such file or directory”:** do not copy another person's home-folder path. Return to the fully extracted folder in Finder and open the file there. If you prefer Terminal, type `bash` followed by a space, drag the **actual Instalar.command file** from that folder into Terminal, and press Enter; Finder inserts the correct path, including spaces. Do this only for a copy of the project you trust, not as a general workaround for unknown files. If the installer reports missing files, download and extract the entire ZIP again.
 
-Para uma instalação somente por texto, abra o Terminal na pasta extraída e use `bash install.sh`. Para apenas verificar os requisitos, sem baixar, compilar ou instalar nada, use `bash install.sh --check`. Veja as opções no [guia completo](#full-guide).
+For a text-only installation, open Terminal in the extracted folder and run `bash install.sh`. To check requirements without downloading, compiling or installing anything, run `bash install.sh --check`. See the options in the [full guide](#full-guide).
 
 ## In short
 
@@ -117,11 +121,11 @@ Para uma instalação somente por texto, abra o Terminal na pasta extraída e us
 | Back | Esc | Circle |
 | Full screen | F | Square |
 | See the games from the console menu | T, or Enter | Triangle, or Cross |
-| Reload games and covers | R, or Atualizar | R2 + L2, or Triangle inside the catalog |
+| Reload games and covers | R, or Refresh | R2 + L2, or Triangle inside the catalog |
 | A–Z or Z–A order | A or Z, in the catalog | L1 or R1 |
 | Filters, favorite, density and library options | ↑ at the top of the library, then ←→ and Enter | ↑ at the top of the library, then ←→ and Cross. ↓ returns to the games |
 | Catalog folders | P. C collapses the marked game's folder | Options opens. ↑↓ chooses the folder, ←→ the action, Cross confirms, Circle closes |
-| Session menu and experience settings | S, then choose an option | Options on the console menu; Sessão or Experiência in the library toolbar |
+| Session menu and experience settings | S, then choose an option | Options on the console menu; Session or Experience in the library toolbar |
 | Skip startup / cancel startup | Enter / Esc | Cross / Circle |
 
 ---
@@ -132,9 +136,9 @@ The repository is named `ps1-2-emulator`. The app is named **PS1/2** and the ins
 
 ## Start here: clone, install and open
 
-O caminho recomendado é o assistente gráfico, aberto por **Instalar.command**. Ele usa o mesmo instalador verificável da linha de comando, mas organiza as ações em telas com visual azul inspirado no PS2. A interface usa mouse/teclado e não exige que um controle já esteja configurado.
+The recommended route is the graphical assistant, opened through **Instalar.command**. It uses the same inspectable installer as the command line, but organizes the actions into PS2-inspired blue screens. The interface uses a mouse/keyboard and does not require a controller to be configured first.
 
-Em um **Mac Apple Silicon com macOS 14 ou mais novo**, você também pode clonar pelo Terminal. O repositório é público e o clone por HTTPS não precisa de autenticação.
+On an **Apple Silicon Mac running macOS 14 or later**, you can also clone through Terminal. The repository is public and HTTPS cloning does not require authentication.
 
 ```bash
 git clone https://github.com/rafaelferreiram/ps1-2-emulator.git
@@ -142,19 +146,19 @@ cd ps1-2-emulator
 bash Instalar.command
 ```
 
-**Já clonou?** Atualize sua cópia, entre na pasta `ps1-2-emulator` e execute apenas `bash Instalar.command`, ou dê dois cliques nele no Finder. Feche a central instalada antes de substituí-la.
+**Already cloned it?** Update your copy, enter the `ps1-2-emulator` folder and run `bash Instalar.command`, or double-click it in Finder. Quit the installed launcher before replacing it.
 
-**Sem Git:** use **Code → Download ZIP** no GitHub, extraia toda a pasta e abra **Instalar.command**. O assistente não depende de uma pasta `.git` e não baixa uma cópia dos seus jogos ou configurações de outro Mac.
+**Without Git:** use **Code → Download ZIP** on GitHub, extract the entire folder and open **Instalar.command**. The assistant does not depend on a `.git` folder and does not download games or settings from another Mac.
 
-Antes de abrir a janela gráfica, o script verifica as ferramentas da Apple usadas para compilar o projeto. Se faltarem, explica a necessidade e oferece abrir `xcode-select --install` **somente com sua confirmação**. A instalação e os termos são da Apple. Depois que ela terminar, volte ao Terminal e continue. Essa primeira etapa pode levar mais tempo e usar vários GB, conforme o pacote da Apple; não é o tamanho da central nem dos jogos. Se as ferramentas exigirem atenção adicional, siga o erro informado; o script não aceita licenças por você.
+Before opening the graphical window, the script checks for Apple's tools used to build the project. If they are missing, it explains why they are needed and offers to run `xcode-select --install` **only with your confirmation**. Apple handles the installation and its terms. When it finishes, return to Terminal and continue. This initial step may take longer and use several GB, depending on Apple's package; that is not the size of the launcher or the games. If the tools need further attention, follow the reported error; the script does not accept licenses for you.
 
-Na janela, o assistente faz uma **verificação sem alterações**, permite escolher o destino e só inicia a instalação depois de **Instalar**. Mostra progresso por etapas e um registro de diagnóstico que pode ser copiado. Se você fechar após uma falha, o Terminal indica o arquivo temporário `setup-session.log` com os detalhes; falhas de compilação ficam em `setup-build.log`. Sem permissão para `/Applications`, escolha outra pasta existente e gravável; veja [instalar na sua pasta pessoal](#install-without-write-permission-for-applications). Durante a instalação, aguarde a conclusão antes de fechar a janela; o assistente evita interromper a substituição dos apps.
+In the window, the assistant runs a **read-only check**, lets you choose the destination and starts installation only after you click **Install**. It shows progress by stage and a diagnostic log you can copy. If you close it after a failure, Terminal identifies the temporary `setup-session.log` file with the details; build failures are recorded in `setup-build.log`. Without permission to write to `/Applications`, choose another existing writable folder; see [installing in your personal folder](#install-without-write-permission-for-applications). During installation, wait for completion before closing the window; the assistant guards against interrupting app replacement.
 
-Ele instala a central e baixa **somente DuckStation e PCSX2 que não estiverem instalados**. Não usa Homebrew ou `sudo`, não reinicia o Mac e não abre apps automaticamente. Ao terminar:
+It installs the launcher and downloads **only DuckStation and PCSX2 apps that are not already installed**. It does not use Homebrew or `sudo`, restart the Mac, or open apps automatically. When it finishes:
 
-1. Use **Abrir DuckStation** e **Abrir PCSX2** para configurar BIOS, biblioteca e controle. Se o macOS pedir Rosetta para algum pacote Intel, a confirmação continua sendo sua.
-2. Teste um jogo diretamente em cada emulador. A central não configura BIOS nem controles dos emuladores automaticamente.
-3. Use **Abrir PS1/2**, abra **Pastas de jogos** (ou **⌘,**) e escolha a pasta de PS1 e a de PS2, no Mac ou em um disco externo. Entre na biblioteca com **Enter / ×** e confirme o jogo para abrir. **T / △** abre a biblioteca no menu e atualiza a lista dentro dela. Veja [Libraries and covers](#libraries-and-covers).
+1. Use **Open DuckStation** and **Open PCSX2** to configure the BIOS, library and controller. If macOS requests Rosetta for an Intel package, you still provide the confirmation yourself.
+2. Test a game directly in each emulator. The launcher does not configure emulator BIOS or controllers automatically.
+3. Use **Open PS1/2**, open **Game folders** (or **⌘,**) and choose the PS1 and PS2 folders on your Mac or an external disk. Enter the library with **Enter / Cross** and confirm the game to launch. **T / Triangle** opens the library from the menu and refreshes the list inside it. See [Libraries and covers](#libraries-and-covers).
 
 **On another machine:** cloning or downloading the repository does not copy the catalog, cached covers, games, BIOS, saves or personal settings. You do not edit code to choose the library. The launcher opens without the SSD, but a new machine has an offline catalog only after a first load with the folder available. Besides the games, you provide the BIOS and finish the emulators' first setup. The installer does not skip that step.
 
@@ -164,11 +168,11 @@ Ele instala a central e baixa **somente DuckStation e PCSX2 que não estiverem i
 - **P1** (Player 1) marker on the preselected console, following the mouse, keyboard and stick. It is only a visual cursor and does not change the controller port in the emulators. Local vector drawing, with no new images, fonts or downloads.
 - Animated preview of the preselected console: a looping GIF, with no sound and **without starting the emulator**. It follows the mouse, keyboard and controller, and continues when the pointer leaves the card. The preview pauses when the launcher loses focus and respects macOS Reduce Motion.
 - Optional full or short startup GIF before a new emulator launch, skippable with Cross/Enter and cancellable with Circle/Esc. Returning to an already open session skips the GIF.
-- A themed catalog per console, front covers, favorites, recent games, search and two cover densities. The **Atualizar** button, **R** and **R2 + L2** reload games and covers. ↑ at the top reaches the toolbar, ←→ chooses an action, Cross confirms and ↓ returns to the library.
+- A themed catalog per console, front covers, favorites, recent games, search and two cover densities. The **Refresh** button, **R** and **R2 + L2** reload games and covers. ↑ at the top reaches the toolbar, ←→ chooses an action, Cross confirms and ↓ returns to the library.
 - Local browsing preferences remember the selected game or folder header, filter, query and density separately for each console and library path. The selected item is brought into view again; an exact pixel scroll position is not stored. Recent games are launcher-observed sessions, not save-state shortcuts.
 - Optional original navigation/confirm/back sounds, synthesized locally with no downloaded recordings or extra dependencies. They default to off, have independent volume and stop when the launcher becomes inactive. Background effects pause while hidden and respect reduced motion.
 - Virtual folders, such as Football or Fighting, only group the list. The files stay where they are. Each group opens and closes on the same screen. Without folders, the catalog is one list.
-- **Pastas de jogos / Local dos jogos**: an independent library per console, local or external, saved on this Mac. The original SSD stays the default and can be restored without moving files.
+- **Game folders / Game location**: an independent library per console, local or external, saved on this Mac. The original SSD stays the default and can be restored without moving files.
 - A local cache of the catalog and thumbnails, shared with the loaded game's cover, to avoid rereading the SSD.
 - Saved PS1 and PS2 catalogs restored at launch, including without the SSD, and a console-style notice when you try to play offline. The subtitle is “Playstation Retro Emulator”, without a “MAIN MENU” label.
 - On/off indicator, time since the emulator opened, and the loaded game when it can be identified.
@@ -235,7 +239,7 @@ Recommended, from the repository root (or double-click in Finder):
 bash Instalar.command
 ```
 
-This prepares and opens the native setup window. No emulator is downloaded or app replaced until you click **Instalar**. The first compiler setup, if needed, is handled through Apple's installer with your permission. The window shows progress by stage, not a promised percentage or download ETA.
+This prepares and opens the native setup window. No emulator is downloaded or app replaced until you click **Install**. The first compiler setup, if needed, is handled through Apple's installer with your permission. The window shows progress by stage, not a promised percentage or download ETA.
 
 For the text-only installer:
 
@@ -271,7 +275,7 @@ Arguments passed to `Instalar.command` go to the text installer: for example, `b
 
 #### Install without write permission for Applications
 
-Do not run the installer with `sudo`. The assistant selects your personal Applications folder if it already exists and is writable when `/Applications` is not. Otherwise, use **Escolher pasta… → Nova Pasta** to create **Applications** inside your home folder and choose it. The equivalent text commands are:
+Do not run the installer with `sudo`. The assistant selects your personal Applications folder if it already exists and is writable when `/Applications` is not. Otherwise, use **Choose folder… → New Folder** to create **Applications** inside your home folder and choose it. The equivalent text commands are:
 
 ```bash
 mkdir -p "$HOME/Applications"
@@ -322,12 +326,12 @@ The default folders remain these, outside the repository:
 
 ### Choose another folder, without editing code
 
-1. Open **Pastas de jogos** through the session menu, or **Local dos jogos** in the catalog. The app menu also has the folder command, with the shortcut **⌘,**.
-2. On the **PS1** or **PS2** card, click **Escolher pasta…**. Select any readable folder on internal storage or on an external disk and confirm the picker. The file picker is the native macOS one. Use the mouse or keyboard in it.
+1. Open **Game folders** through the session menu, or **Game location** in the catalog. The app menu also has the folder command, with the shortcut **⌘,**.
+2. On the **PS1** or **PS2** card, click **Choose folder…**. Select any readable folder on internal storage or on an external disk and confirm the picker. The file picker is the native macOS one. Use the mouse or keyboard in it.
 3. The launcher saves the choice and does a full load **of that console only**. It accepts one folder per console, including subfolders. It does not search the whole Mac. Choose the folder dedicated to the games, not the root of a disk.
-4. Click **Concluído** and enter the console's catalog with **Enter / ×**. After adding games or covers, press **T / △** inside it to reload explicitly.
+4. Click **Done** and enter the console's catalog with **Enter / Cross**. After adding games or covers, press **T / Triangle** inside it to reload explicitly.
 
-Cancelling the picker leaves everything as it was. **Restaurar padrão** returns to the original `Extreme SSD` folder and tries to recover its saved catalog, including while the disk is disconnected. If needed, reload with **T / △** when it is connected.
+Cancelling the picker leaves everything as it was. **Restore default** returns to the original `Extreme SSD` folder and tries to recover its saved catalog, including while the disk is disconnected. If needed, reload with **T / Triangle** when it is connected.
 
 The choices stay in the app's local preferences, separate for PS1 and PS2, and survive quitting, reopening and updating the app. The launcher does not move or copy games and does not change BIOS, saves, memory cards or emulator settings. If you want the same library listed inside DuckStation or PCSX2, set the folder in their preferences too. `--destination` on the installer only changes where the apps are installed.
 
@@ -348,25 +352,25 @@ If macOS asks for access to the external volume, choose **Allow** to finish a fu
 | Back / cancel the launch | Esc | Circle |
 | Full screen / window | F | Square |
 | List games from the console menu | T, or Enter | Triangle, or Cross |
-| Reload games and covers | R, or Atualizar | R2 + L2. Inside the catalog, Triangle also reloads |
+| Reload games and covers | R, or Refresh | R2 + L2. Inside the catalog, Triangle also reloads |
 | Catalog order | A for A–Z, Z for Z–A | L1 for A–Z, R1 for Z–A |
 | Filters, favorite, density and library options | ↑ at the top of the library, then ←→ and Enter. ↓ returns to the library | ↑ at the top of the library, then ←→ and Cross. ↓ returns to the library. L1, R1, Options and △ remain shortcuts |
 | Catalog folders | P opens. C collapses or shows the marked game's folder | Options opens the panel. ↑↓ chooses the folder, ←→ the action, Cross confirms, Circle closes |
 | Open or collapse a virtual folder | Select its header, then Enter | Select its header, then Cross; collapsed headers remain navigable |
-| Search by game name | Click Buscar jogos and type; Enter finishes editing, Esc leaves the field | No on-screen keyboard; Limpar busca is available through the toolbar |
-| Session menu | S, or Sessão | Options on the console menu; select Sessão in the catalog toolbar |
-| Boot, sound and motion preferences | Session menu → Experiência, or the catalog toolbar | Same menus; ↑↓ selects, ←→ changes, Cross confirms, Circle closes |
+| Search by game name | Click Search games and type; Enter finishes editing, Esc leaves the field | No on-screen keyboard; Clear search is available through the toolbar |
+| Session menu | S, or Session | Options on the console menu; select Session in the catalog toolbar |
+| Boot, sound and motion preferences | Session menu → Experience, or the catalog toolbar | Same menus; ↑↓ selects, ←→ changes, Cross confirms, Circle closes |
 | Skip startup / cancel startup | Enter / Esc | Cross / Circle |
-| Set game folders | ⌘, or the session/library option | Open Local dos jogos or the session option, then the D-pad or stick chooses PS1/PS2, Cross opens the picker and Circle goes back |
+| Set game folders | ⌘, or the session/library option | Open Game location or the session option, then the D-pad or stick chooses PS1/PS2, Cross opens the picker and Circle goes back |
 | Quit the launcher | ⌘Q | — |
 
 With the mouse, hovering PS1 or PS2 preselects the console. Clicking enters that console's library; it no longer starts the emulator immediately. The preview of the preselected console continues even without hover and also follows the keyboard or controller arrows. The preview GIF is silent, local and does not download anything. Optional interface sounds are a separate preference. Controller mapping inside the games remains each emulator's job.
 
 The left stick selects in four directions. On the menu, each tilt changes the console once: return it to center before repeating in the same direction. In the catalog, left and right move between items and up and down move one row. Collapsible folder headers are navigation rows too, so empty or collapsed groups can be reopened by controller. Holding repeats after 450 ms, every 140 ms. The dead zone and diagonal settling avoid moves from small wobble. After changing screens, using a button or returning from another app, return the stick to center to arm it again. The right stick does not navigate.
 
-A–Z and Z–A reorder the same list; **Recentes** keeps most recently opened first. On the controller, ↑ at the top reaches the toolbar: ←→ changes the option, Cross confirms and ↓ returns to the library. Favorites, filters, clearing the search and density are available there. L1, R1, OPTIONS and △ remain shortcuts. **Pastas** creates groups such as Football or Fighting and only organizes the catalog: no file is moved. Without folders, the screen stays one list. Each group can collapse and reopen, and anything left out appears in the ungrouped library.
+A–Z and Z–A reorder the same list; **Recent** keeps most recently opened first. On the controller, ↑ at the top reaches the toolbar: ←→ changes the option, Cross confirms and ↓ returns to the library. Favorites, filters, clearing the search and density are available there. L1, R1, OPTIONS and △ remain shortcuts. **Folders** creates groups such as Football or Fighting and only organizes the catalog: no file is moved. Without folders, the screen stays one list. Each group can collapse and reopen, and anything left out appears in the ungrouped library.
 
-The **Atualizar** action reloads the list and the covers of the console in focus. The **R** key and **R2 + L2** do the same, on the menu or in the catalog. Inside the catalog, **T / △** also reloads. R2 and L2 must be held together. Releasing only one trigger does not fire it again. Explicit updates bypass the automatic 30-second throttle, but concurrent requests are coalesced rather than starting parallel scans of the same library.
+The **Refresh** action reloads the list and the covers of the console in focus. The **R** key and **R2 + L2** do the same, on the menu or in the catalog. Inside the catalog, **T / △** also reloads. R2 and L2 must be held together. Releasing only one trigger does not fire it again. Explicit updates bypass the automatic 30-second throttle, but concurrent requests are coalesced rather than starting parallel scans of the same library.
 
 Cross, Circle, Square, Triangle, R2, L2, the D-pad and the stick act only while the launcher is focused. Controller mapping inside the games remains each emulator's job.
 
@@ -377,7 +381,7 @@ Cross, Circle, Square, Triangle, R2, L2, the D-pad and the stick act only while 
 - “Game loaded” is inferred from disc images the process has open. The launcher does not tell playing from paused and does not use old logs to guess.
 - Images outside the library, files held entirely in memory, or denied access can prevent identification.
 - New game sessions start the official app with `-fullscreen -batch -- <game path>` for either emulator. Full-screen behavior and normal game shutdown still belong to that emulator. Batch mode requests exit after the game shuts down; it does not bypass save confirmations. Separately opened emulator settings are not rewritten.
-- Switching games while another session is loaded is blocked. Finish the session in the emulator itself. **Voltar ao jogo** focuses an existing session immediately, without boot animation or a new game request.
+- Switching games while another session is loaded is blocked. Finish the session in the emulator itself. **Return to game** focuses an existing session immediately, without boot animation or a new game request.
 - If either emulator is already open with no identified game, a themed confirmation offers a normal quit and restart with the chosen game. Since identification has limits, cancel if that window is doing something you want to keep. The launcher never force-quits and stops if normal termination is refused or still waiting for confirmation.
 - Automatic return tracks only game processes started by this launcher, matching both PID and launch date. After that exact process exits, the selected item is restored. The launcher only brings itself forward if the emulator was the last active app or the launcher is already active; it does not steal focus from another app or adopt independently opened sessions. The selection is still subject to the current library and filter.
 - Recent games are recorded when the monitor identifies the requested disc in the matching launched process. A successful open request alone does not prove the game booted. This is local launch history, not playtime, game progress, a compatibility test or an automatic save/load feature.
@@ -393,11 +397,11 @@ The cache lives in `~/Library/Caches/local.rafael.centraldejogos/`, on the Mac's
 
 - `Catalog/`: saves the **last successful full load**, with titles, paths, covers and the CUE/CCD/M3U disc grouping. With the disk disconnected, opening the catalog reuses that index, from memory or from the local disk, without scanning the library. It keeps up to eight indexes in memory and up to eight files / 16 MiB on disk (4 MiB maximum per file).
 - When the launcher starts, both catalogs are restored from the local cache, even without the SSD. If there is no saved cache yet, that restore does not scan. You need to connect the SSD and open or reload the catalog once. Do not delete the cache if you want to keep offline browsing.
-- Entering the catalog first uses its saved index and, with the folder available, schedules a **background full scan**, throttled to avoid another automatic scan within 30 seconds of the previous attempt. This is not an incremental filesystem watcher or a timer that scans every 30 seconds. A first uncached load and choosing a different folder still need a scan. **Atualizar**, **R**, **R2 + L2** or **△ / T** inside the catalog bypass the throttle. Existing games stay selectable and playable during the scan; launch validates only the chosen game. Merely focusing the app or reconnecting the disk does not start a scan. Failed updates retain the saved list with a warning; failed automatic attempts are throttled too, while an explicit update can retry immediately.
+- Entering the catalog first uses its saved index and, with the folder available, schedules a **background full scan**, throttled to avoid another automatic scan within 30 seconds of the previous attempt. This is not an incremental filesystem watcher or a timer that scans every 30 seconds. A first uncached load and choosing a different folder still need a scan. **Refresh**, **R**, **R2 + L2** or **△ / T** inside the catalog bypass the throttle. Existing games stay selectable and playable during the scan; launch validates only the chosen game. Merely focusing the app or reconnecting the disk does not start a scan. Failed updates retain the saved list with a warning; failed automatic attempts are throttled too, while an explicit update can retry immediately.
 - The index is separate per **console and library path**. Changing folders removes the previous list from the screen immediately. An old task cannot put it back. Returning to the default library can recover its cache, within the limits above. No choice deletes game or cover files.
 - `Thumbnails/`: catalog thumbnails use 320, 480, 640 or 1024 px buckets according to their rendered size and display scale; the menu has a 108 px request. RAM and disk hits do not consult the original cover. Visible cards request their artwork on demand; low-priority batches progressively warm offline covers instead of eagerly decoding every size. Optional warming pauses while a game is running and the launcher is inactive. If a suitable thumbnail does not exist or was evicted, the cache tries to read only that cover, without rereading the games. Without access to it, a placeholder appears. An unvisited cover is not guaranteed to be available offline before warming finishes, and cache limits can evict older covers.
 - The cover cache budget is 32 MiB of images kept in memory and 64 MiB / 256 files on disk. Visible views may keep extra images. That budget is not the app's total memory use. Automatic cleanup removes only files from this cache.
-- With the external disk disconnected, you can browse the last list and the covers already saved. **When you choose “Jogar”**, the launcher validates the selected files. If the volume is disconnected, it shows a themed notice with the volume name and the game title, without starting the emulator. Cross/Enter or Circle/Esc closes the notice and keeps the catalog. After reconnecting, choose the game again: there is no automatic launch. Games in a local folder do not depend on another console's SSD. The cache does not contain the games. Removed files or files without permission get their own message.
+- With the external disk disconnected, you can browse the last list and the covers already saved. **When you choose “Play”**, the launcher validates the selected files. If the volume is disconnected, it shows a themed notice with the volume name and the game title, without starting the emulator. Cross/Enter or Circle/Esc closes the notice and keeps the catalog. After reconnecting, choose the game again: there is no automatic launch. Games in a local folder do not depend on another console's SSD. The cache does not contain the games. Removed files or files without permission get their own message.
 - Corrupt or unavailable cache files are ignored and recreated. If you need to clear it by hand, quit the launcher and move only that cache folder to the Trash. Never delete the game, BIOS or save folders.
 
 This optimization is for the launcher and the catalog. It does not change speed, FPS, settings, saves or the internal behavior of DuckStation and PCSX2.
@@ -433,7 +437,7 @@ These tests use local fixtures and the included GIFs. They do not need to downlo
 
 The folder and personal-library tests use temporary preferences and directories. They cover persistence, validation, offline restore, console/root isolation, favorites, query/filter behavior, history and late results from earlier loads. Session lifecycle fixtures check process identity and navigation without starting emulators. Experience tests verify preference defaults/persistence, controller adjustment, motion settings and deterministic sound decoding without playing audio. The installer tests use isolated scenarios, without installing real emulators or replacing apps in `/Applications`. `bash install.sh --check` can check your machine's prerequisites before you install.
 
-The setup tests cover literal command arguments, streamed progress markers, UTF-8 output, bounded logs, large combined stdout/stderr, prerequisite failures, retry, explicit installation and an inert preview. They use harmless fixture backends, not real installs. The startup tests exercise prerequisite guidance and command forwarding. On 05/10/2026, a separate download-only check of the production installer passed for the official DuckStation `latest` macOS ZIP and PCSX2 `v2.8.2` stable macOS archive, including SHA-256, bundle identity, signature and quarantine. No emulator was opened or installed by that check. Download contents can change later, so checks remain mandatory on every installation.
+The setup tests cover literal command arguments, streamed progress markers, UTF-8 output, bounded logs, large combined stdout/stderr, prerequisite failures, retry, explicit installation and an inert preview. They use harmless fixture backends, not real installs. The startup tests exercise prerequisite guidance and command forwarding. On 5 October 2026, a separate download-only check of the production installer passed for the official DuckStation `latest` macOS ZIP and PCSX2 `v2.8.2` stable macOS archive, including SHA-256, bundle identity, signature and quarantine. No emulator was opened or installed by that check. Download contents can change later, so checks remain mandatory on every installation.
 
 Portability tests use a real relocated distribution without `.git`, with spaces/accents, read-only inputs, a relative symlink and unrelated working directory. They check missing files before dependencies/build. The source-layout suite runs read-only `--check`; the portable-build suite mocks compilation/signing, verifies output paths and scoped cleanup, and never installs an app. The launcher tests separately verify sibling, system, user and registered emulator locations using harmless fake bundles.
 
@@ -455,7 +459,7 @@ bash tests/run-cache-benchmark.sh
 
 The benchmark does not start emulators or change games. It writes its test cache in a temporary folder, removed when it finishes. Times vary with the SSD, the library and macOS's own cache.
 
-Historical local measurement of **version 4.6**, on 29/09/2026 (**not a version 5.0 benchmark**; catalog lookup, not total interface time; average of five in-memory lookups):
+Historical local measurement of **version 4.6**, on 29 September 2026 (**not a version 5.0 benchmark**; catalog lookup, not total interface time; average of five in-memory lookups):
 
 | Library | Full read | In-memory cache | Cache after recreating the loader |
 |---|---:|---:|---:|
@@ -505,6 +509,6 @@ Creditos.txt               Sources and attribution for the visual assets
 
 ## Credits and use
 
-A personal project, with no official link to Sony, DuckStation or PCSX2. Third-party assets keep their own rights. Public repository visibility does not grant redistribution rights for those assets. See [Creditos.txt](Creditos.txt) for the origin of the controllers, logo, GIFs and covers. No open redistribution license was assigned to the third-party assets.
+A personal project, with no official link to Sony, DuckStation or PCSX2. Third-party assets keep their own rights. Public repository visibility does not grant redistribution rights for those assets. See [Credits](Creditos.txt) for the origin of the controllers, logo, GIFs and covers. No open redistribution license was assigned to the third-party assets.
 
 Do not include ROMs, BIOS, saves, credentials, personal backups or emulator builds in this repository. `.gitignore` helps avoid accidental additions, but it does not replace reviewing the files before a commit.
