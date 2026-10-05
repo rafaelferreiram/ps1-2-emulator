@@ -2,7 +2,12 @@
 # Real image integration: installs only the bundled launcher into an owned temp
 # directory. No emulator downloads, launch, real-app replacement or LS writes.
 set -euo pipefail
-[ "$#" -eq 1 ] && [ -f "$1" ] || { printf 'Usage: bash tests/run-dmg-tests.sh /path/to/installer.dmg\n' >&2; exit 2; }
+if { [ "$#" -ne 1 ] && [ "$#" -ne 3 ]; } || [ ! -f "$1" ]; then
+    printf 'Usage: bash tests/run-dmg-tests.sh /path/to/installer.dmg [--mounted /Volumes/installer]\n' >&2; exit 2
+fi
+if [ "$#" -eq 3 ] && { [ "$2" != --mounted ] || [[ "$3" != /Volumes/* ]] || [ ! -d "$3" ] || [ -L "$3" ]; }; then
+    printf 'Use --mounted with an existing read-only image mounted in Finder.\n' >&2; exit 2
+fi
 dmg_test_image="$(cd -- "$(dirname -- "$1")" && pwd -P)/$(basename -- "$1")"
 dmg_test_stage="$(/usr/bin/mktemp -d /private/tmp/ps12-dmg-tests.XXXXXX)"
 dmg_test_mount="$dmg_test_stage/Mounted Installer"
@@ -35,8 +40,31 @@ dmg_test_require() {
 }
 /bin/mkdir -p "$dmg_test_mount" "$dmg_test_stage/Personal Applications"
 dmg_test_require 'compressed DMG checksum' /usr/bin/hdiutil verify "$dmg_test_image"
-/usr/bin/hdiutil attach -readonly -noautoopen -mountpoint "$dmg_test_mount" -plist "$dmg_test_image" > "$dmg_test_stage/mount.plist"
-dmg_test_mounted=yes
+if [ "$#" -eq 3 ]; then
+    # Finder can mount images on hosts whose terminal cannot reach Disk
+    # Arbitration. Never detach an externally managed mount during cleanup.
+    dmg_test_mount="$(cd -- "$3" && pwd -P)"
+    /usr/bin/hdiutil info -plist > "$dmg_test_stage/images.plist"
+    dmg_test_image_index=0
+    dmg_test_found=no
+    while dmg_test_reported_image="$(/usr/bin/plutil -extract "images.$dmg_test_image_index.image-path" raw -o - "$dmg_test_stage/images.plist" 2>/dev/null)"; do
+        if [ "$dmg_test_reported_image" = "$dmg_test_image" ]; then
+            dmg_test_require 'Finder image is mounted read-only' test \
+                "$(/usr/bin/plutil -extract "images.$dmg_test_image_index.writeable" raw -o - "$dmg_test_stage/images.plist")" = false
+            dmg_test_entity_index=0
+            while /usr/bin/plutil -extract "images.$dmg_test_image_index.system-entities.$dmg_test_entity_index" json -o /dev/null "$dmg_test_stage/images.plist" 2>/dev/null; do
+                dmg_test_reported_mount="$(/usr/bin/plutil -extract "images.$dmg_test_image_index.system-entities.$dmg_test_entity_index.mount-point" raw -o - "$dmg_test_stage/images.plist" 2>/dev/null || true)"
+                if [ "$dmg_test_reported_mount" = "$dmg_test_mount" ]; then dmg_test_found=yes; break; fi
+                dmg_test_entity_index=$((dmg_test_entity_index + 1))
+            done
+        fi
+        dmg_test_image_index=$((dmg_test_image_index + 1))
+    done
+    dmg_test_require 'Finder mount belongs to the exact requested image' test "$dmg_test_found" = yes
+else
+    /usr/bin/hdiutil attach -readonly -noautoopen -mountpoint "$dmg_test_mount" -plist "$dmg_test_image" > "$dmg_test_stage/mount.plist"
+    dmg_test_mounted=yes
+fi
 dmg_test_app="$dmg_test_mount/Install PS1-2.app"
 dmg_test_installer="$dmg_test_app/Contents/Resources/Installer"
 dmg_test_target="$dmg_test_stage/Personal Applications/PS1-2.app"

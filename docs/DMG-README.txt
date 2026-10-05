@@ -49,3 +49,10 @@ choose a writable folder or create Applications inside your personal folder.
 Keep this disk image mounted until installation finishes. If anything fails,
 use the assistant's details and Copy log action; review personal paths before
 sharing a log. Retry after fixing the reported cause.
+
+UPGRADING FROM INSTALLER 5.1.0
+
+Version 5.1.1 fixes a disk-image packaging defect that could report
+"InspectMachO: resource fork, Finder information, or similar detritus not allowed".
+Quit the old installer and eject its image before opening the new DMG.
+You do not need to clear quarantine or disable macOS security for this fix.

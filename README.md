@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/rafaelferreiram/ps1-2-emulator/releases/download/v5.1.0/PS1-2-Installer-5.1.0-arm64.dmg"><strong>Download DMG</strong></a>
+  <a href="https://github.com/rafaelferreiram/ps1-2-emulator/releases/download/v5.1.1/PS1-2-Installer-5.1.1-arm64.dmg"><strong>Download DMG</strong></a>
   &nbsp;·&nbsp;
   <a href="#download-and-install">Installation guide</a>
   &nbsp;·&nbsp;
@@ -19,7 +19,7 @@
   <a href="#full-guide">Full guide</a>
 </p>
 
-<p align="center"><strong>Version 5.1.0 · build 28</strong> · Apple Silicon Mac · macOS 14 or later</p>
+<p align="center"><strong>Version 5.1.1 · build 29</strong> · Apple Silicon Mac · macOS 14 or later</p>
 
 <p align="center">
   <img src="docs/images/menu.png" width="920" alt="Main menu: PlayStation 2 selected, with preview, controls and DualSense">
@@ -86,13 +86,15 @@ The three covers are a sample included in the project, so the catalog can look l
 
 ## Download and install
 
-**[Download PS1/2 5.1.0 for Mac — DMG, about 4.5 MB](https://github.com/rafaelferreiram/ps1-2-emulator/releases/download/v5.1.0/PS1-2-Installer-5.1.0-arm64.dmg)**
+**[Download PS1/2 5.1.1 for Mac — DMG, about 4.5 MB](https://github.com/rafaelferreiram/ps1-2-emulator/releases/download/v5.1.1/PS1-2-Installer-5.1.1-arm64.dmg)**
 
 This is the precompiled installer for **Apple Silicon (M1 or later), macOS 14 or later**. It includes the launcher and setup assistant; missing emulators are downloaded separately during installation. No GitHub account is required.
 
-[Release notes and all assets](https://github.com/rafaelferreiram/ps1-2-emulator/releases/tag/v5.1.0) · [SHA-256 checksum](https://github.com/rafaelferreiram/ps1-2-emulator/releases/download/v5.1.0/PS1-2-Installer-5.1.0-arm64.dmg.sha256)
+[Release notes and all assets](https://github.com/rafaelferreiram/ps1-2-emulator/releases/tag/v5.1.1) · [SHA-256 checksum](https://github.com/rafaelferreiram/ps1-2-emulator/releases/download/v5.1.1/PS1-2-Installer-5.1.1-arm64.dmg.sha256)
 
-On the release page, choose **`PS1-2-Installer-5.1.0-arm64.dmg`**, not the automatic **Source code (zip)** or **Source code (tar.gz)** downloads. Source archives require a local build; the DMG does not.
+On the release page, choose **`PS1-2-Installer-5.1.1-arm64.dmg`**, not the automatic **Source code (zip)** or **Source code (tar.gz)** downloads. Source archives require a local build; the DMG does not.
+
+**Updating from the 5.1.0 installer?** If preflight reported `InspectMachO: resource fork, Finder information, or similar detritus not allowed`, quit the old installer, eject its image and download **5.1.1**. Version 5.1.0's image builder added Finder metadata to signed files; downloading the same old DMG again does not fix that packaging defect. The corrected image keeps strict signature checks and does not require clearing quarantine or disabling macOS security.
 
 ### Recommended: DMG — no programming tools needed
 
@@ -116,7 +118,7 @@ You need an **Apple Silicon Mac (M1 or later), macOS 14 or later, and internet a
 **Optional integrity check:** download the `.sha256` file beside the DMG into the same folder, open Terminal in that folder, and run:
 
 ```bash
-shasum -a 256 -c PS1-2-Installer-5.1.0-arm64.dmg.sha256
+shasum -a 256 -c PS1-2-Installer-5.1.1-arm64.dmg.sha256
 ```
 
 It should report `OK`. This checks that your download matches the published file; it does not replace Developer ID signing, Apple notarization or your decision to trust the project.
@@ -174,7 +176,7 @@ For a text-only installation, open Terminal in the extracted folder and run `bas
 
 ## Full guide
 
-The repository is named `ps1-2-emulator`. The app is named **PS1/2** and the installed file is `PS1-2.app`, because `/` is a folder separator on macOS. Current version: **5.1.0, build 28**.
+The repository is named `ps1-2-emulator`. The app is named **PS1/2** and the installed file is `PS1-2.app`, because `/` is a folder separator on macOS. Current version: **5.1.1, build 29**.
 
 ## Start here: clone, install and open
 
@@ -366,21 +368,29 @@ This is a **developer task**, requiring Apple's build tools on an Apple Silicon 
 bash scripts/build-dmg.sh
 ```
 
-The script creates `dist/PS1-2-Installer-5.1.0-arm64.dmg` and a matching `.sha256` file. An optional output-directory argument lets you choose another location. Existing release files are never overwritten; use a new output directory when rebuilding the same version.
+The script creates `dist/PS1-2-Installer-5.1.1-arm64.dmg` and a matching `.sha256` file. An optional output-directory argument lets you choose another location. Existing release files are never overwritten; use a new output directory when rebuilding the same version.
 
 The image contains **Install PS1-2.app** and **Read Me.txt**. The app bundles the compiled launcher, setup assistant, exclusive-move helper and a native Mach-O architecture inspector. Its prebuilt installation path does not invoke `swiftc`, `xcrun`, `xcode-select` or the `lipo` developer-tools shim. Source builds retain their normal toolchain checks. The installer writes only to its temporary workspace and the chosen installation destination, not to the mounted image.
 
-The builder validates local code signatures and the bundled payload, verifies the compressed image, and generates its checksum. These are **ad hoc signatures**, not proof of an identified developer or Apple notarization. A Developer ID-signed and notarized distribution is a separate release process. Do not describe this build as Apple-verified. [Apple's distribution guidance](https://developer.apple.com/documentation/xcode/packaging-mac-software-for-distribution).
+The builder validates local code signatures and the bundled payload, normalizes only the known Finder icon-position metadata generated by `makehybrid` in its private HFS+ image, then checks the final compressed image's filesystem metadata and checksum. Unexpected metadata causes the build to fail. The normalization tool runs only on the developer's temporary build image; it is not shipped in the installer and does not change executable bytes or signatures. These are **ad hoc signatures**, not proof of an identified developer or Apple notarization. A Developer ID-signed and notarized distribution is a separate release process. Do not describe this build as Apple-verified. [Apple's distribution guidance](https://developer.apple.com/documentation/xcode/packaging-mac-software-for-distribution).
 
 The DMG does not bundle the external emulators, BIOS, games, saves or personal settings. Missing emulators are fetched from their official releases during installation. The app's existing artwork remains subject to the [credits and use](#credits-and-use) notice.
 
 To test a built image on a Mac with disk-image mounting available:
 
 ```bash
-bash tests/run-dmg-tests.sh "$PWD/dist/PS1-2-Installer-5.1.0-arm64.dmg"
+bash tests/run-dmg-tests.sh "$PWD/dist/PS1-2-Installer-5.1.1-arm64.dmg"
 ```
 
 This mounts the image read-only and installs only its bundled launcher into a disposable temporary folder, with developer-tool lookup deliberately unavailable. It does not download or open emulators, replace real apps, or register the test launcher with LaunchServices.
+
+If command-line mounting cannot reach Disk Arbitration, open the exact DMG in Finder first and test that existing mount:
+
+```bash
+bash tests/run-dmg-tests.sh "$PWD/dist/PS1-2-Installer-5.1.1-arm64.dmg" --mounted "/Volumes/PS1-2 Installer"
+```
+
+The test verifies that the mount belongs to the supplied DMG and leaves it mounted; eject it in Finder afterwards. It still checks strict signatures on the mounted files and installs only into a disposable test folder.
 
 ## Libraries and covers
 
@@ -496,6 +506,7 @@ bash tests/run-source-layout-tests.sh
 bash tests/run-portable-build-tests.sh
 bash tests/run-macho-inspector-tests.sh
 bash tests/run-prebuilt-installer-tests.sh
+bash tests/run-hfs-metadata-tests.sh
 bash tests/run-library-settings-tests.sh
 bash tests/run-responsive-layout-tests.sh
 bash tests/run-personal-library-tests.sh
@@ -515,7 +526,11 @@ Version 5.0.1 was also compiled with the real Apple tools from a separate read-o
 
 For version 5.1.0, eight relevant suites passed 589 assertions: bootstrap, source layout, portable build, launcher selection, setup assistant, installer, prebuilt installation and native Mach-O inspection. The final DMG passed Apple's image checksum verification. Its exact contents were independently extracted and their nested code signatures verified; the extracted read-only payload installed the real launcher into a temporary destination while developer-tool lookup was unavailable. The setup window also opened without a source-path argument. Official DuckStation and PCSX2 downloads passed hash, signature and architecture checks with the new native inspector; neither emulator was installed or opened during validation.
 
-Disk-image mounting was unavailable in the build environment, so the mounted-image test and first-open Gatekeeper flow were **not** completed there. Extraction and isolated installation do not replace testing a downloaded DMG on a fresh Mac. This release is not Apple-notarized; no claim is made that it runs without security confirmations or on every Mac.
+The 5.1.0 extraction check did not preserve the image's Finder metadata and therefore missed a real mounted-image packaging defect. Version 5.1.1 adds direct HFS+ catalog validation before compression and after decoding the final compressed DMG, plus a regression fixture that reproduces the reported signature error. See the [5.1.1 release notes](docs/RELEASE-5.1.1.md).
+
+For 5.1.1, **726 assertions across ten suites passed**, including 117 HFS metadata checks and 20 checks against the actual DMG mounted through Finder. The mounted image passed strict nested signature verification and installed the real launcher into a disposable folder with developer-tool lookup unavailable, preserving quarantine. The setup assistant opened directly from the mounted image and reached its ready-to-install state. No real app, emulator, game or save was replaced.
+
+Command-line mounting remains unavailable in the build environment, but Finder mounting worked and was used for those tests. **A fresh-download Gatekeeper/App Translocation flow on a clean Mac has not been tested.** This release is not Apple-notarized; no claim is made that it runs without security confirmations or on every Mac.
 
 Optional, only on a machine with the emulators and SSD set up: a read inventory of the real libraries:
 

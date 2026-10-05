@@ -34,6 +34,7 @@ scripts/MoveApp.swift
 scripts/InspectMachO.swift
 scripts/payload-check.sh
 scripts/build-dmg.sh
+scripts/NormalizeHFS.swift
 docs/DMG-README.txt
 assets/Logo.png
 assets/PS1Controller.png

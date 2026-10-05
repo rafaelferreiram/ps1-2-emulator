@@ -1,5 +1,7 @@
 # PS1/2 5.1.0 — guided DMG installer
 
+> **Superseded by [5.1.1](https://github.com/rafaelferreiram/ps1-2-emulator/releases/tag/v5.1.1).** This DMG has a confirmed Finder metadata packaging defect that can fail strict signature validation during preflight. Download the corrected 5.1.1 installer instead. The notes below describe the original release; re-downloading 5.1.0 will not fix the defect.
+
 **Apple Silicon (M1 or later) · macOS 14 or later · build 28**
 
 ## Download and install

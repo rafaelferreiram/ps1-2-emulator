@@ -85,11 +85,23 @@ ps12_payload_check "$dmg_installer"
 printf 'Creating a compressed read-only disk image…\n'
 # Build the HFS+ filesystem as a file, without creating or mounting a temporary
 # disk device. This also works in build environments without Disk Arbitration.
+# makehybrid adds Finder icon coordinates (-1,-1), even to signed executables.
+# Normalize only that exact generated metadata in this private build image;
+# never change executable bytes, signatures, quarantine or the user's Mac.
+/usr/bin/xcrun swiftc -O -parse-as-library -target arm64-apple-macosx14.0 \
+    -module-cache-path "$dmg_stage/module-cache" \
+    "$dmg_source/scripts/NormalizeHFS.swift" -o "$dmg_stage/NormalizeHFS"
 /usr/bin/hdiutil makehybrid -hfs -hfs-volume-name 'PS1-2 Installer' \
     -o "$dmg_stage/filesystem.dmg" "$dmg_stage/image"
+"$dmg_stage/NormalizeHFS" --normalize "$dmg_stage/filesystem.dmg"
+"$dmg_stage/NormalizeHFS" --check "$dmg_stage/filesystem.dmg"
 /usr/bin/hdiutil convert -format UDZO -tgtimagekey zlib-level=9 \
     -o "$dmg_stage/$dmg_name" "$dmg_stage/filesystem.dmg"
 /usr/bin/hdiutil verify "$dmg_stage/$dmg_name"
+# Audit the actual compressed artifact, not an extraction that can discard
+# FinderInfo. Conversion is file-based and does not need a mounted volume.
+/usr/bin/hdiutil convert -format UDTO -o "$dmg_stage/final-audit.cdr" "$dmg_stage/$dmg_name"
+"$dmg_stage/NormalizeHFS" --check "$dmg_stage/final-audit.cdr"
 # Publish exclusively on the output filesystem; never overwrite an old release.
 dmg_publish_stage="$(/usr/bin/mktemp -d "$dmg_output/.ps12-dmg-output.XXXXXX")"
 /bin/cp "$dmg_stage/$dmg_name" "$dmg_publish_stage/$dmg_name"
