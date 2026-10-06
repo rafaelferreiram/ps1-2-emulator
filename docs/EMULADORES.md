@@ -4,7 +4,7 @@ The PS1/2 app in this repository is only the launcher and catalog. DuckStation a
 
 ## Recommended path: use the launcher installer
 
-For normal installation, [download the **5.1.1 DMG release**](https://github.com/rafaelferreiram/ps1-2-emulator/releases/download/v5.1.1/PS1-2-Installer-5.1.1-arm64.dmg) and open **Install PS1-2.app** inside it. The launcher and assistant are precompiled: no Terminal, Git, Homebrew, Xcode or Command Line Tools are needed for this route. The assistant installs the launcher and downloads verified official emulators that are missing. The current DMG is ad hoc signed, not Developer ID signed or Apple-notarized; macOS may require your explicit security confirmation. See the [DMG steps in the README](../README.md#download-and-install).
+For normal installation, [download the **5.2.0 DMG release**](https://github.com/rafaelferreiram/ps1-2-emulator/releases/download/v5.2.0/PS1-2-Installer-5.2.0-arm64.dmg) and open **Install PS1-2.app** inside it. The launcher and assistant are precompiled: no Terminal, Git, Homebrew, Xcode or Command Line Tools are needed for this route. The assistant installs the launcher and downloads verified official emulators that are missing. The current DMG is ad hoc signed, not Developer ID signed or Apple-notarized; macOS may require your explicit security confirmation. See the [DMG steps in the README](../README.md#download-and-install).
 
 The commands below are the alternative **source-build workflow**, which still requires Apple's build tools:
 
