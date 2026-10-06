@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/rafaelferreiram/ps1-2-emulator/releases/download/v5.1.1/PS1-2-Installer-5.1.1-arm64.dmg"><strong>Download DMG</strong></a>
+  <a href="https://github.com/rafaelferreiram/ps1-2-emulator/releases/download/v5.2.0/PS1-2-Installer-5.2.0-arm64.dmg"><strong>Download DMG</strong></a>
   &nbsp;·&nbsp;
   <a href="#download-and-install">Installation guide</a>
   &nbsp;·&nbsp;
@@ -19,7 +19,9 @@
   <a href="#full-guide">Full guide</a>
 </p>
 
-<p align="center"><strong>Version 5.1.1 · build 29</strong> · Apple Silicon Mac · macOS 14 or later</p>
+<p align="center"><strong>Version 5.2.0 · build 30</strong> · Apple Silicon Mac · macOS 14 or later</p>
+
+**New in 5.2.0:** keep your covers in a `Capas` folder inside each game library and take them to another Mac with your SSD. No old-Mac cache or emulator artwork folder is needed. See [portable artwork](#portable-artwork-on-an-ssd-or-another-mac-520) and the [release notes](docs/RELEASE-5.2.0.md).
 
 <p align="center">
   <img src="docs/images/menu.png" width="920" alt="Main menu: PlayStation 2 selected, with preview, controls and DualSense">
@@ -86,15 +88,17 @@ The three covers are a sample included in the project, so the catalog can look l
 
 ## Download and install
 
-**[Download PS1/2 5.1.1 for Mac — DMG, about 4.5 MB](https://github.com/rafaelferreiram/ps1-2-emulator/releases/download/v5.1.1/PS1-2-Installer-5.1.1-arm64.dmg)**
+**[Download PS1/2 5.2.0 for Mac — DMG, about 4.5 MB](https://github.com/rafaelferreiram/ps1-2-emulator/releases/download/v5.2.0/PS1-2-Installer-5.2.0-arm64.dmg)**
 
 This is the precompiled installer for **Apple Silicon (M1 or later), macOS 14 or later**. It includes the launcher and setup assistant; missing emulators are downloaded separately during installation. No GitHub account is required.
 
-[Release notes and all assets](https://github.com/rafaelferreiram/ps1-2-emulator/releases/tag/v5.1.1) · [SHA-256 checksum](https://github.com/rafaelferreiram/ps1-2-emulator/releases/download/v5.1.1/PS1-2-Installer-5.1.1-arm64.dmg.sha256)
+[Release notes and all assets](https://github.com/rafaelferreiram/ps1-2-emulator/releases/tag/v5.2.0) · [SHA-256 checksum](https://github.com/rafaelferreiram/ps1-2-emulator/releases/download/v5.2.0/PS1-2-Installer-5.2.0-arm64.dmg.sha256)
 
-On the release page, choose **`PS1-2-Installer-5.1.1-arm64.dmg`**, not the automatic **Source code (zip)** or **Source code (tar.gz)** downloads. Source archives require a local build; the DMG does not.
+On the release page, choose **`PS1-2-Installer-5.2.0-arm64.dmg`**, not the automatic **Source code (zip)** or **Source code (tar.gz)** downloads. Source archives require a local build; the DMG does not.
 
-**Updating from the 5.1.0 installer?** If preflight reported `InspectMachO: resource fork, Finder information, or similar detritus not allowed`, quit the old installer, eject its image and download **5.1.1**. Version 5.1.0's image builder added Finder metadata to signed files; downloading the same old DMG again does not fix that packaging defect. The corrected image keeps strict signature checks and does not require clearing quarantine or disabling macOS security.
+**Updating from the 5.1.0 installer?** If preflight reported `InspectMachO: resource fork, Finder information, or similar detritus not allowed`, quit the old installer, eject its image and download **5.2.0**, which includes the 5.1.1 packaging fix. Version 5.1.0's image builder added Finder metadata to signed files; downloading the same old DMG again does not fix that packaging defect. The corrected image keeps strict signature checks and does not require clearing quarantine or disabling macOS security.
+
+**Moving your SSD to another Mac?** Install **5.2.0 or later**, keep `Capas` inside each selected game folder, and choose **Atualizar / R / Triangle** inside each console's catalog. Version 5.1.1 and earlier do not automatically read this dedicated folder. The installer does not create, download or migrate your personal cover collection; follow the [portable artwork instructions](#portable-artwork-on-an-ssd-or-another-mac-520).
 
 ### Recommended: DMG — no programming tools needed
 
@@ -118,7 +122,7 @@ You need an **Apple Silicon Mac (M1 or later), macOS 14 or later, and internet a
 **Optional integrity check:** download the `.sha256` file beside the DMG into the same folder, open Terminal in that folder, and run:
 
 ```bash
-shasum -a 256 -c PS1-2-Installer-5.1.1-arm64.dmg.sha256
+shasum -a 256 -c PS1-2-Installer-5.2.0-arm64.dmg.sha256
 ```
 
 It should report `OK`. This checks that your download matches the published file; it does not replace Developer ID signing, Apple notarization or your decision to trust the project.
@@ -176,7 +180,7 @@ For a text-only installation, open Terminal in the extracted folder and run `bas
 
 ## Full guide
 
-The repository is named `ps1-2-emulator`. The app is named **PS1/2** and the installed file is `PS1-2.app`, because `/` is a folder separator on macOS. Current version: **5.1.1, build 29**.
+The repository is named `ps1-2-emulator`. The app is named **PS1/2** and the installed file is `PS1-2.app`, because `/` is a folder separator on macOS. Current source and published installer version: **5.2.0, build 30**.
 
 ## Start here: clone, install and open
 
@@ -368,7 +372,7 @@ This is a **developer task**, requiring Apple's build tools on an Apple Silicon 
 bash scripts/build-dmg.sh
 ```
 
-The script creates `dist/PS1-2-Installer-5.1.1-arm64.dmg` and a matching `.sha256` file. An optional output-directory argument lets you choose another location. Existing release files are never overwritten; use a new output directory when rebuilding the same version.
+The current source creates `dist/PS1-2-Installer-5.2.0-arm64.dmg` and a matching `.sha256` file. This local build is not uploaded automatically. An optional output-directory argument lets you choose another location. Existing release files are never overwritten; use a new output directory when rebuilding the same version.
 
 The image contains **Install PS1-2.app** and **Read Me.txt**. The app bundles the compiled launcher, setup assistant, exclusive-move helper and a native Mach-O architecture inspector. Its prebuilt installation path does not invoke `swiftc`, `xcrun`, `xcode-select` or the `lipo` developer-tools shim. Source builds retain their normal toolchain checks. The installer writes only to its temporary workspace and the chosen installation destination, not to the mounted image.
 
@@ -379,7 +383,7 @@ The DMG does not bundle the external emulators, BIOS, games, saves or personal s
 To test a built image on a Mac with disk-image mounting available:
 
 ```bash
-bash tests/run-dmg-tests.sh "$PWD/dist/PS1-2-Installer-5.1.1-arm64.dmg"
+bash tests/run-dmg-tests.sh "$PWD/dist/PS1-2-Installer-5.2.0-arm64.dmg"
 ```
 
 This mounts the image read-only and installs only its bundled launcher into a disposable temporary folder, with developer-tool lookup deliberately unavailable. It does not download or open emulators, replace real apps, or register the test launcher with LaunchServices.
@@ -387,7 +391,7 @@ This mounts the image read-only and installs only its bundled launcher into a di
 If command-line mounting cannot reach Disk Arbitration, open the exact DMG in Finder first and test that existing mount:
 
 ```bash
-bash tests/run-dmg-tests.sh "$PWD/dist/PS1-2-Installer-5.1.1-arm64.dmg" --mounted "/Volumes/PS1-2 Installer"
+bash tests/run-dmg-tests.sh "$PWD/dist/PS1-2-Installer-5.2.0-arm64.dmg" --mounted "/Volumes/PS1-2 Installer"
 ```
 
 The test verifies that the mount belongs to the supplied DMG and leaves it mounted; eject it in Finder afterwards. It still checks strict signatures on the mounted files and installs only into a disposable test folder.
@@ -413,7 +417,36 @@ Cancelling the picker leaves everything as it was. **Restore default** returns t
 
 The choices stay in the app's local preferences, separate for PS1 and PS2, and survive quitting, reopening and updating the app. The launcher does not move or copy games and does not change BIOS, saves, memory cards or emulator settings. If you want the same library listed inside DuckStation or PCSX2, set the folder in their preferences too. `--destination` on the installer only changes where the apps are installed.
 
-Official covers come from `~/Library/Application Support/DuckStation/covers` and `~/Library/Application Support/PCSX2/covers`, matched by the disc serial. An image in the game folder is used when the catalog does not have an official cover that belongs only to that game: PNG, JPG, JPEG or WebP. It can be named `capa`, `cover` or `front`, or it can be the only image beside the disc. If the game is inside a `GAME` subfolder, the image can sit in the folder above. Two discs that share a serial do not share the same art: the official cover stays with the game that matches the original name, and the other uses the image in its own folder.
+### Portable artwork on an SSD or another Mac (5.2.0)
+
+Create a folder named **`Capas` inside each selected game-library folder**. It follows the library, so no old username, emulator installation or old cache is needed. For the default SSD layout:
+
+```text
+Emulacao/
+├── PS1/Jogos/
+│   ├── Capas/Space Jam (USA).jpg
+│   └── Space Jam (USA)/Space Jam (USA).cue
+└── PS2/Jogos/
+    ├── Capas/FIFA Street 2.jpg
+    └── FSTR2/FIFA Street 2.iso
+```
+
+1. Copy the artwork you want to keep into the relevant `Capas` folder. Do not move or delete your originals.
+2. Prefer the **complete game filename stem** plus `.png`, `.jpg`, `.jpeg` or `.webp`. Keep serial prefixes, language/version suffixes and punctuation. For a CUE or playlist entry, use its filename, not an individual track's filename.
+3. On another Mac, install a build with portable-cover support and select the parent game folder in **Game folders**. The SSD may have a different name or mount path. Do not select `Capas` as the game library.
+4. Open that console's catalog and choose **Atualizar / R / Triangle**. Missing artwork is not downloaded automatically.
+
+Valid portable artwork takes priority over bundled and emulator-local covers. Unique title, serial or game-database names also match, but a key shared by multiple games is deliberately not guessed. For mods that reuse a serial, give each image its own full game filename. If multiple games have the same filename/title, use each game's separate folder with its own `capa.jpg` instead. Symlinked portable cover files/folders are ignored: copy the actual image bytes onto the disk.
+
+PS2 images in `Capas` must be portrait front covers (width/height 0.55–0.85); full unfolded cases, banners, broken images and square artwork are skipped so they cannot replace a valid fallback. PS1 covers retain their original format. Nothing in `Capas` is scanned as a game.
+
+The catalog and decoded thumbnails remain **local caches on each Mac**. They are filled after loading readable artwork, so an already loaded library can still be browsed offline on that Mac. Warm browsing does not scan the SSD; a full refresh detects added or changed portable artwork. Copying the old Mac's cache is neither required nor a replacement for keeping the original images on the SSD.
+
+This convention works with any selected local/external game folder; it is not tied to `Extreme SSD`. The app does not copy personal covers into the repository or upload them. It also does not rewrite DuckStation/PCSX2 cover-folder preferences: portable artwork applies to the **PS1/2 central's catalog and now-playing display**.
+
+### Existing artwork fallbacks
+
+If no unambiguous portable cover is available, the app tries its bundled fronts, then `~/Library/Application Support/DuckStation/covers` or `~/Library/Application Support/PCSX2/covers`, matched by filename/title/serial. These emulator directories belong to that Mac user and do not travel with an SSD. An image in the game folder is used when the catalog does not have a matching curated cover that belongs only to that game: PNG, JPG, JPEG or WebP. It can be named `capa`, `cover` or `front`, or it can be the only image beside the disc. If the game is inside a `GAME` subfolder, the image can sit in the folder above. Two discs that share a serial do not share the same art: the curated cover stays with the game that matches the original name, and the other uses the image in its own folder.
 
 On PS2, the cover shown is the front, in portrait. A single unfolded case image, with back, spine and front, is shown as the front only. If a `capa` file is also there, that file is the cover the catalog uses. Three front covers included in `assets/Covers/PS2` keep the presentation of those titles consistent.
 
@@ -507,6 +540,7 @@ bash tests/run-portable-build-tests.sh
 bash tests/run-macho-inspector-tests.sh
 bash tests/run-prebuilt-installer-tests.sh
 bash tests/run-hfs-metadata-tests.sh
+bash tests/run-portable-cover-tests.sh
 bash tests/run-library-settings-tests.sh
 bash tests/run-responsive-layout-tests.sh
 bash tests/run-personal-library-tests.sh
@@ -529,6 +563,10 @@ For version 5.1.0, eight relevant suites passed 589 assertions: bootstrap, sourc
 The 5.1.0 extraction check did not preserve the image's Finder metadata and therefore missed a real mounted-image packaging defect. Version 5.1.1 adds direct HFS+ catalog validation before compression and after decoding the final compressed DMG, plus a regression fixture that reproduces the reported signature error. See the [5.1.1 release notes](docs/RELEASE-5.1.1.md).
 
 For 5.1.1, **726 assertions across ten suites passed**, including 117 HFS metadata checks and 20 checks against the actual DMG mounted through Finder. The mounted image passed strict nested signature verification and installed the real launcher into a disposable folder with developer-tool lookup unavailable, preserving quarantine. The setup assistant opened directly from the mounted image and reached its ready-to-install state. No real app, emulator, game or save was replaced.
+
+For **5.2.0**, **65 portable-cover assertions**, **55 cover-cache checks** and **127 launcher integration assertions** passed. Existing catalog, catalog-cache and now-playing tests also passed. A fresh-Mac simulation of the connected libraries resolved all **11 PS1 and 18 PS2 covers** from `Jogos/Capas`, with no emulator artwork, database, bundled fronts or previous cache. The copied images were byte/hash-verified and visually reviewed; some mods intentionally retain their base game's artwork. Synthetic tests also cover relocated roots, duplicate/shared-serial ambiguity, symlink rejection, in-place image changes, refresh and persistent offline thumbnails.
+
+The 5.2.0 release DMG passed checksum and HFS metadata validation, **20 mounted-image assertions**, strict nested signatures and an isolated launcher installation without developer tools. Its setup assistant reached the ready-to-install screen. These checks did not replace real applications, launch games or emulate a physical second Mac; that Mac still needs the new build and a catalog refresh. The personal cover collection used for validation is not included in the repository or release.
 
 Command-line mounting remains unavailable in the build environment, but Finder mounting worked and was used for those tests. **A fresh-download Gatekeeper/App Translocation flow on a clean Mac has not been tested.** This release is not Apple-notarized; no claim is made that it runs without security confirmations or on every Mac.
 

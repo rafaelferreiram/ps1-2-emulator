@@ -1959,7 +1959,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func showAbout() {
         let alert = NSAlert()
         alert.messageText = "PS1/2"
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "5.1.1"
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "5.2.0"
         alert.informativeText = "Versão \(version) · PlayStation Retro Emulator\n\n× entra na biblioteca e inicia o jogo. ○ volta, □ alterna tela cheia e △ abre ou atualiza o catálogo. S abre as opções da sessão.\n\nFavoritos, recentes, busca e densidade ficam na biblioteca. Em Experiência, escolha a animação de início, os sons e o movimento. Sons originais, opcionais e desligados por padrão.\n\nEscolha as pastas em PS1/2 → Pastas dos jogos (⌘,). O catálogo e as capas em cache funcionam offline; para jogar, conecte o disco. Jogos, BIOS, saves e configurações dos emuladores não são movidos.\n\nDuckStation e PCSX2 continuam sendo aplicativos independentes. A central inicia jogos em tela cheia e acompanha as sessões que abriu; não salva nem restaura progresso.\n\nLogo: fornecido pelo usuário. Fotos: Evan-Amos / Wikimedia, domínio público. GIFs: Tenor. Créditos completos no pacote. Sem vínculo oficial com Sony."
         alert.icon = Theme.images["Logo"]
         alert.addButton(withTitle: "OK")

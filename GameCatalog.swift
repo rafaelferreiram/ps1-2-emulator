@@ -235,6 +235,10 @@ struct CatalogSource: Hashable, Sendable {
     let database: URL?
     let frontCovers: URL?
 
+    /// Travels with the selected game library, not with a Mac username or cache.
+    /// Deriving this path is purely lexical so restoring offline stays disk-free.
+    var portableCovers: URL { root.appendingPathComponent("Capas", isDirectory: true) }
+
     init(consoleKey: String, root: URL, covers: URL, database: URL?, frontCovers: URL? = nil) {
         self.consoleKey = consoleKey
         self.root = root
@@ -257,7 +261,7 @@ struct CatalogSource: Hashable, Sendable {
 
 enum CatalogScanner {
     static let excludedDirectories: Set<String> = [
-        "bios", "cache", "saves", "savestates", "memcards", "covers", "thumbnails", "__macosx"
+        "bios", "cache", "saves", "savestates", "memcards", "covers", "capas", "thumbnails", "__macosx"
     ]
     private static let imageExtensions: Set<String> = ["png", "jpg", "jpeg", "webp"]
 
@@ -391,6 +395,7 @@ enum CatalogScanner {
 
         let frontCoverIndex = source.frontCovers.map { imageIndex(in: $0, consoleKey: source.consoleKey) } ?? [:]
         let coverIndex = imageIndex(in: source.covers, consoleKey: source.consoleKey)
+        let portableIndex = imageIndex(in: source.portableCovers, consoleKey: source.consoleKey, rejectSymlinks: true)
         let names = databaseNames(source.database)
         let gamePaths = candidates.values.map(\.path)
         var pending: [PendingGame] = []
@@ -401,12 +406,25 @@ enum CatalogScanner {
                 ?? discSerial(dataFiles[file.path] ?? file)
             let officialName = serial.flatMap { names[$0] }
             let searchDirectories = coverSearchDirectories(file: file, gamePaths: gamePaths, rootPath: root.path)
-            let cover = findCover(file: file, title: title, serial: serial,
-                                  databaseName: officialName, frontCoverIndex: frontCoverIndex,
-                                  coverIndex: coverIndex, consoleKey: source.consoleKey,
-                                  searchDirectories: searchDirectories)
-            pending.append(PendingGame(file: file, title: title, officialName: officialName, cover: cover,
+            pending.append(PendingGame(file: file, title: title, serial: serial, officialName: officialName, cover: nil,
                                        searchDirectories: searchDirectories))
+        }
+        // A mod can reuse another game's serial; two folders can have the same
+        // filename. Never guess ownership from an ambiguous portable image name.
+        var portableOwners: [String: Int] = [:]
+        for game in pending {
+            for key in Set(game.coverNames.map(normalized)) where !key.isEmpty {
+                portableOwners[key, default: 0] += 1
+            }
+        }
+        for index in pending.indices {
+            let game = pending[index]
+            let portable = game.coverNames.lazy.map(normalized).compactMap { key -> URL? in
+                portableOwners[key] == 1 ? portableIndex[key] : nil
+            }.first
+            pending[index].cover = portable ?? findCover(file: game.file, title: game.title, serial: game.serial,
+                databaseName: game.officialName, frontCoverIndex: frontCoverIndex, coverIndex: coverIndex,
+                consoleKey: source.consoleKey, searchDirectories: game.searchDirectories)
         }
         assignDistinctCovers(&pending, frontCoverIndex: frontCoverIndex, coverIndex: coverIndex, consoleKey: source.consoleKey)
         var games = pending.map {
@@ -518,9 +536,14 @@ enum CatalogScanner {
     private struct PendingGame {
         let file: URL
         let title: String
+        let serial: String?
         let officialName: String?
         var cover: URL?
         let searchDirectories: [URL]
+
+        var coverNames: [String] {
+            [file.deletingPathExtension().lastPathComponent, title] + [serial, officialName].compactMap { $0 }
+        }
     }
 
     /// Folders that contain this game alone, from the disc's folder up to the
@@ -588,12 +611,20 @@ enum CatalogScanner {
             .unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }.map(String.init).joined()
     }
 
-    private static func imageIndex(in directory: URL, consoleKey: String) -> [String: URL] {
+    private static func imageIndex(in directory: URL, consoleKey: String, rejectSymlinks: Bool = false) -> [String: URL] {
+        if rejectSymlinks {
+            guard let values = try? directory.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey]),
+                  values.isDirectory == true, values.isSymbolicLink != true else { return [:] }
+        }
         guard let files = try? FileManager.default.contentsOfDirectory(at: directory,
             includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]) else { return [:] }
         var result: [String: URL] = [:]
         // Keep the emulator's custom PNG if a downloaded JPEG exists with the same name.
         for file in files.sorted(by: { ($0.pathExtension.lowercased() == "png" ? "0" : "1") + $0.path < ($1.pathExtension.lowercased() == "png" ? "0" : "1") + $1.path }) {
+            if rejectSymlinks {
+                guard let values = try? file.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey]),
+                      values.isRegularFile == true, values.isSymbolicLink != true else { continue }
+            }
             guard imageExtensions.contains(file.pathExtension.lowercased()),
                   let image = CGImageSourceCreateWithURL(file as CFURL, nil), CGImageSourceGetCount(image) > 0 else { continue }
             if consoleKey == "ps2", !isPortraitCover(image) { continue }

@@ -50,6 +50,20 @@ Keep this disk image mounted until installation finishes. If anything fails,
 use the assistant's details and Copy log action; review personal paths before
 sharing a log. Retry after fixing the reported cause.
 
+PORTABLE COVERS (5.2.0)
+
+Keep a Capas folder inside each selected game folder. For example, place
+FIFA Street 2.jpg in PS2/Jogos/Capas beside the game's library. Use the complete
+game filename, replacing its disc extension with PNG, JPG, JPEG or WebP.
+Use portrait front covers for PS2. Separate filenames keep mods distinct even
+when they reuse a serial. Ambiguous names are not guessed.
+
+On another Mac, select the game folder containing Capas and choose Atualizar
+(R or Triangle) in that console's catalog. Images then come from the disk,
+without requiring the old Mac's emulator covers or cache. After loading,
+thumbnails are cached locally for offline browsing. No images are downloaded
+automatically, uploaded, or written into emulator preferences.
+
 UPGRADING FROM INSTALLER 5.1.0
 
 Version 5.1.1 fixes a disk-image packaging defect that could report

@@ -417,8 +417,12 @@ actor CatalogCache {
                 }
             }
         }
-        try append([String(version), source.consoleKey])
+        try append([String(version), source.consoleKey, "portable-covers-v1"])
         try node(source.root, recursive: true, required: true, requireDirectory: true, gameTree: true)
+        // Capas is excluded from ROM enumeration but still invalidates artwork
+        // snapshots on an explicit/background full refresh. Warm/offline loads
+        // continue to use the saved snapshot without touching the SSD.
+        try node(source.portableCovers, recursive: true, required: false, requireDirectory: true)
         try node(source.covers, recursive: true, required: false, requireDirectory: true)
         if let frontCovers = source.frontCovers { try node(frontCovers, recursive: true, required: false, requireDirectory: true) }
         if let database = source.database { try node(database, recursive: false, required: false) }
